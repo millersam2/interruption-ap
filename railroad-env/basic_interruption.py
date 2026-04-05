@@ -13,7 +13,7 @@ LOCATIONS = {
         "countertop1": np.array([1,1]),
         "countertop2": np.array([2,2]),
         "table": np.array([0,2])
-    }
+}
 
 OBJECTS_BY_TYPE = {
     "robot": {"robot1"},
