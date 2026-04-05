@@ -261,22 +261,40 @@ def test_astart_search_noint(heuristic_fn):
 
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1"), Fluent("at water_bottle kitchen"), ~Fluent("hand-full robot1")}
+        fluents={
+            Fluent("at robot1 kitchen"), Fluent("free robot1"),
+            Fluent("at water_bottle kitchen"), ~Fluent("hand-full robot1")
+        }
     )
 
-    goal = Fluent("at robot1 living_room") & Fluent("free robot1") & Fluent("at water_bottle living_room")
+    goal = (
+        Fluent("at robot1 living_room") &
+        Fluent("free robot1") &
+        Fluent("at water_bottle living_room")
+    )
 
     plan, plan_cost = astar_search((initial_state, goal), all_actions, None, heuristic_fn)
     assert len(plan) == 3
     plan_with_names = [action.name for action in plan]
     # print(plan_with_names)
-    assert plan_with_names == ["pick robot1 kitchen water_bottle", "move robot1 kitchen living_room", "place robot1 living_room water_bottle"]
+    assert plan_with_names == [
+        "pick robot1 kitchen water_bottle",
+        "move robot1 kitchen living_room",
+        "place robot1 living_room water_bottle"
+    ]
     assert plan_cost == pytest.approx(3 + 4 * 0.9 + 2 * 0.81)
 
 
 @pytest.mark.parametrize("task_distribution", [
     ([Fluent("at robot1 living_room") & Fluent("free robot1")], [1]),
-    ([Fluent("at robot1 living_room") & Fluent("free robot1"), Fluent("at robot1 living_room") & Fluent("free robot1") & Fluent("at water_bottle living_room")], [0.5, 0.5])
+    (
+        [
+            Fluent("at robot1 living_room") & Fluent("free robot1"),
+            Fluent("at robot1 living_room") &
+            Fluent("free robot1") &
+            Fluent("at water_bottle living_room")
+        ], [0.5, 0.5]
+    )
 ])
 def test_compute_interruption_value(task_distribution):
     objects_by_type = {
@@ -296,7 +314,12 @@ def test_compute_interruption_value(task_distribution):
 
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1"), Fluent("at water_bottle kitchen"), ~Fluent("hand-full robot1")}
+        fluents={
+            Fluent("at robot1 kitchen"),
+            Fluent("free robot1"),
+            Fluent("at water_bottle kitchen"),
+            ~Fluent("hand-full robot1")
+        }
     )
     expected_value = compute_interruption_value(initial_state, all_actions, task_distribution)
 
