@@ -7,7 +7,11 @@ Progress Log
 
 Implementation:
 TODO - 
-- convert basic scenario to use the interruption_ap planner
+- revamp how interruption probabilities are defined/used
+- closure for heuristic function
+
+- basic interruption scenario with debug environment (no interruptions), for probability param tuning
+- basic interruption scenario with tuned parameter for actual interruption environment
 
 DONE - 
 - Data Class for trajectories:
@@ -29,10 +33,17 @@ DONE -
     Inputs: trajectory, action, desired heuristic function
     Outputs: heuristic cost
 - value function v(p)
+- code changes to increase readability based on code review with Professor Stein:
+    - rename g to discounted_accumulated_cost
+    - remove metastate as an argument to astar
+    - construct_trajectory read from and pass value instead of whole cache
+    - construct_trajectory implement as method rather than function
+
 
 Testing:
 
 TODO -
+- add some additional context to tests
 
 DONE - 
 - get_action_cost
@@ -43,3 +54,4 @@ DONE -
 - construct_trajectory
 - compute_interruption_value
 - astar_search
+- split g into two tests using a helper function

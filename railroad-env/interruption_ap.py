@@ -1,12 +1,55 @@
+from dataclasses import dataclass
 from typing import Dict, Tuple, List, Callable, Union
 import heapq
-from utilities import Trajectory, get_action_cost, get_next_state
-from railroad.core import State, Goal, Action, det_ff_heuristic, get_next_actions
+from utilities import get_action_cost, get_next_state
+from railroad.core import State, Goal, Action, get_next_actions
+
+# data structures for astar search
+@dataclass
+class Trajectory:
+    """
+    Data structure used to represent search tree trajectories (paths).
+    """
+    state_history: List[State]
+    plan: List[Action]
+    cost: float = 0.0
+    value: float = 0.0
+    level: int = 0
+
+    def create_child(
+        self,
+        goal: Goal,
+        actions: List[Action],
+        action: Action,
+        interruption_value: float,
+        heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0
+    ) -> 'Trajectory':
+        """
+        Helper function for creation of trajectories on the frontier.
+        """
+        # compute f(n)
+        accumulated_cost = discounted_accumulated_cost(self, action, interruption_value)
+        next_state = get_next_state(self.state_history[-1], action)
+        estimated_future_cost = h(self, action, goal, actions, heuristic_fn)
+
+        return Trajectory(
+            cost=accumulated_cost,
+            value=accumulated_cost+estimated_future_cost,
+            level=self.level+1,
+            state_history=self.state_history + [next_state],
+            plan=self.plan + [action]
+        )
+
 
 # constants
 INTERRUPTION_PROB = 0.1
 
-def g(traj: Trajectory, action: Action, value_cache: Dict[State, float]) -> float:
+
+def discounted_accumulated_cost(
+    traj: Trajectory,
+    action: Action,
+    interruption_value: float
+) -> float:
     """
     Accumulated cost function of trajectory.
     """
@@ -16,9 +59,8 @@ def g(traj: Trajectory, action: Action, value_cache: Dict[State, float]) -> floa
     # get reward
     r = get_action_cost(action)
 
-    # get expected value of interruption
-    next_state = get_next_state(traj.state_history[-1], action)
-    interruption_value = value_cache.get(next_state, 0) * INTERRUPTION_PROB
+    # discount the interruption value
+    interruption_value*=INTERRUPTION_PROB
 
     return path_cost + no_int_prob * (r + interruption_value)
 
@@ -28,7 +70,7 @@ def h(
     action: Action,
     goal: Goal,
     all_actions: List[Action],
-    heuristic_fn: Union[int, float, Callable[..., float]]
+    heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]]
 ) -> float:
     """
     Heuristic function used to estimate the cost remaining for the trajectory.
@@ -43,10 +85,11 @@ def h(
 
 
 def astar_search(
-    meta_state: Tuple[State, Goal],
+    state: State,
+    goal: Goal,
     actions: List[Action],
     interrupting_task_dist: Tuple[List[Goal], List[float]] | None,
-    heuristic_fn: Union[int, float, Callable[..., float]] = 0,
+    heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
     num_steps: int = 1000
 ) -> Tuple[List[Action], float]:
     """
@@ -54,10 +97,9 @@ def astar_search(
     """
     value_cache: Dict[State, float] = dict()
     frontier = []
-    goal = meta_state[1]
 
     # initial trajectory
-    initial_traj = Trajectory(state_history=[meta_state[0]], plan=[])
+    initial_traj = Trajectory(state_history=[state], plan=[])
     heapq.heappush(frontier, (-1, initial_traj))
 
     # search loop
@@ -84,7 +126,10 @@ def astar_search(
                 value_cache[next_state] = val
 
             # construct new trajectory
-            child_traj, q_value= construct_trajectory(goal, actions, expand, action, value_cache)
+            # use get method instead of directly indexing value_cache to account for case where
+            # there are no interrupting tasks
+            child_traj = expand.create_child(goal, actions, action, value_cache.get(next_state, 0))
+            q_value = child_traj.value
             heapq.heappush(frontier, (q_value, child_traj))
 
     # goal not reached, get best trajectory found
@@ -92,37 +137,11 @@ def astar_search(
     return best_found.plan, best_found.cost
 
 
-def construct_trajectory(
-    goal: Goal,
-    actions: List[Action],
-    parent: Trajectory,
-    action: Action,
-    value_cache: Dict[State, float],
-    heuristic_fn: Union[int, float, Callable[..., float]] = 0
-) -> Tuple[Trajectory, float]:
-    """
-    Helper function for creation of trajectories on the frontier.
-    """
-    # compute f(n)
-    accumulated_cost = g(parent, action, value_cache)
-    next_state = get_next_state(parent.state_history[-1], action)
-    estimated_future_cost = h(parent, action, goal, actions, heuristic_fn)
-
-    traj = Trajectory(
-        cost=accumulated_cost,
-        value=accumulated_cost+estimated_future_cost,
-        level=parent.level+1,
-        state_history=parent.state_history + [next_state],
-        plan=parent.plan + [action]
-    )
-    return traj, traj.value
-
-
 def compute_interruption_value(
     state: State,
     actions: List[Action],
     interrupting_task_dist: Tuple[List[Goal], List[float]],
-    heuristic_fn: Union[int, float, Callable[..., float]] = 0
+    heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0
 ):
     """
     Computes the expected value of a state for a task distribution.
@@ -132,7 +151,7 @@ def compute_interruption_value(
         task = interrupting_task_dist[0][i]
         prob = interrupting_task_dist[1][i]
 
-        _, cost = astar_search((state, task), actions, None, heuristic_fn)
+        _, cost = astar_search(state, task, actions, None, heuristic_fn)
         expected_cost += (prob * cost)
     return expected_cost
 

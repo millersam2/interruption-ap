@@ -1,8 +1,20 @@
 import pytest
 from railroad.core import State, Fluent, get_next_actions, det_ff_heuristic
-from railroad.operators.core import construct_move_operator, construct_pick_operator, construct_place_operator
-from interruption_ap import check_value_cache, get_no_int_prob, g, h, construct_trajectory, astar_search, compute_interruption_value
-from utilities import Trajectory, get_next_state
+from railroad.operators.core import (
+    construct_move_operator,
+    construct_pick_operator,
+    construct_place_operator
+)
+from interruption_ap import (
+    check_value_cache,
+    get_no_int_prob,
+    discounted_accumulated_cost,
+    h,
+    astar_search,
+    compute_interruption_value,
+    Trajectory
+)
+from utilities import get_next_state
 
 INTERRUPTION_PROB = 0.1
 
@@ -28,7 +40,11 @@ def test_get_no_int_prob():
     assert get_no_int_prob(traj) == 0.81
 
 
-def test_g():
+@pytest.mark.parametrize(
+    'interruption_value, solution',
+    [(0, [4, 7.6, 10.84]), (2, [4.2, 7.98, 11.382])]
+)
+def test_discounted_accumulated_cost(interruption_value, solution):
     # setup
     move_op = construct_move_operator(4)
 
@@ -48,97 +64,23 @@ def test_g():
     traj = Trajectory(state_history=[initial_state], plan=[])
     value_cache = {}
 
-    # accumulated computation with no value_cache
-    # action 1
-    applicable_actions = get_next_actions(initial_state, move_actions)
-    assert len(applicable_actions) == 1
+    # solution stores the discounted accumulated cost after taking an action
+    # from the current state of the trajectory
+    for discounted_acc_cost in solution:
+        applicable_actions = get_next_actions(traj.state_history[-1], move_actions)
+        assert len(applicable_actions) == 1
+        assert discounted_accumulated_cost(
+            traj,
+            applicable_actions[0],
+            interruption_value
+        ) == pytest.approx(discounted_acc_cost)
 
-    assert g(traj, applicable_actions[0], value_cache) == 4
-
-    # update 1
-    next_state = get_next_state(initial_state, applicable_actions[0])
-    traj.plan.append(applicable_actions[0])
-    traj.level+=1
-    traj.state_history.append(next_state)
-    traj.value = 4
-    traj.cost = 4
-
-    # action 2
-    applicable_actions = get_next_actions(traj.state_history[-1], move_actions)
-    assert len(applicable_actions) == 1
-
-    assert g(traj, applicable_actions[0], value_cache) == pytest.approx(7.6)
-
-    # update 2
-    next_state = get_next_state(traj.state_history[-1], applicable_actions[0])
-    traj.plan.append(applicable_actions[0])
-    traj.level+=1
-    traj.state_history.append(next_state)
-    traj.value = 7.6
-    traj.cost = 7.6
-
-    # action 3
-    applicable_actions = get_next_actions(traj.state_history[-1], move_actions)
-    assert len(applicable_actions) == 1
-
-    assert g(traj, applicable_actions[0], value_cache) == pytest.approx(10.84)
-
-    # update 3
-    next_state = get_next_state(traj.state_history[-1], applicable_actions[0])
-    traj.plan.append(applicable_actions[0])
-    traj.level+=1
-    traj.state_history.append(next_state)
-    traj.value = 10.84
-    traj.cost = 10.84
-
-    # accumulated computation with value_cache
-    for state in traj.state_history:
-        value_cache[state] = 2
-    assert len(value_cache) > 0
-
-    traj = Trajectory(state_history=[initial_state], plan=[])
-
-    # action 1
-    applicable_actions = get_next_actions(initial_state, move_actions)
-    assert len(applicable_actions) == 1
-
-    assert g(traj, applicable_actions[0], value_cache) == pytest.approx(4.2)
-
-    # update 1
-    next_state = get_next_state(initial_state, applicable_actions[0])
-    traj.plan.append(applicable_actions[0])
-    traj.level+=1
-    traj.state_history.append(next_state)
-    traj.value = 4.2
-    traj.cost = 4.2
-
-    # action 2
-    applicable_actions = get_next_actions(traj.state_history[-1], move_actions)
-    assert len(applicable_actions) == 1
-
-    assert g(traj, applicable_actions[0], value_cache) == pytest.approx(7.98)
-
-    # update 2
-    next_state = get_next_state(traj.state_history[-1], applicable_actions[0])
-    traj.plan.append(applicable_actions[0])
-    traj.level+=1
-    traj.state_history.append(next_state)
-    traj.value = 7.98
-    traj.cost = 7.98
-
-    # action 3
-    applicable_actions = get_next_actions(traj.state_history[-1], move_actions)
-    assert len(applicable_actions) == 1
-
-    assert g(traj, applicable_actions[0], value_cache) == pytest.approx(11.382)
-
-    # update 3
-    next_state = get_next_state(traj.state_history[-1], applicable_actions[0])
-    traj.plan.append(applicable_actions[0])
-    traj.level+=1
-    traj.state_history.append(next_state)
-    traj.value = 11.382
-    traj.cost = 11.382
+        # update the trajectory
+        next_state = get_next_state(traj.state_history[-1], applicable_actions[0])
+        traj.level+=1
+        traj.state_history.append(next_state)
+        traj.value = discounted_acc_cost
+        traj.cost = discounted_acc_cost
 
 
 def test_h():
@@ -200,12 +142,11 @@ def test_construct_trajectory(heuristic_fn):
     new_state = get_next_state(initial_state, action)
 
     traj = Trajectory(state_history=[initial_state], plan=[])
-    new_traj, value = construct_trajectory(
+    new_traj = traj.create_child(
         goal,
         move_actions,
-        traj,
         action,
-        {},
+        0,
         heuristic_fn
     )
 
@@ -239,7 +180,7 @@ def test_astart_search_noint(heuristic_fn):
     goal = Fluent("at robot1 living_room") & Fluent("free robot1")
 
     # testing with no interrupting tasks
-    plan, plan_cost = astar_search((initial_state, goal), move_actions, None, heuristic_fn)
+    plan, plan_cost = astar_search(initial_state, goal, move_actions, None, heuristic_fn)
     assert len(plan) == 1
     assert plan[0].name == "move robot1 kitchen living_room"
     assert plan_cost == 4
@@ -273,7 +214,7 @@ def test_astart_search_noint(heuristic_fn):
         Fluent("at water_bottle living_room")
     )
 
-    plan, plan_cost = astar_search((initial_state, goal), all_actions, None, heuristic_fn)
+    plan, plan_cost = astar_search(initial_state, goal, all_actions, None, heuristic_fn)
     assert len(plan) == 3
     plan_with_names = [action.name for action in plan]
     # print(plan_with_names)
