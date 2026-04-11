@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 from typing import List
 from railroad.core import Action, Goal, State, transition
 from railroad.core import (
@@ -11,19 +10,7 @@ from railroad.core import (
     convert_goal_to_positive_preconditions
 )
 
-# utility functions and classes for interruption anticipatory planning
-@dataclass
-class Trajectory:
-    """
-    Data structure used to represent search tree trajectories (paths).
-    """
-    state_history: List[State]
-    plan: List[Action]
-    cost: float = 0.0
-    value: float = 0.0
-    level: int = 0
-
-
+# utility functions for interruption anticipatory planning
 def get_action_cost(action: Action) -> float:
     """
     Gets the total cost (reward) of performing an action.
