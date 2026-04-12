@@ -36,6 +36,7 @@ def test_get_next_state():
 
     applicable_actions = get_next_actions(initial_state, move_actions)
     assert len(applicable_actions) == 1
-    next_state = get_next_state(initial_state, applicable_actions[0])
+    next_state, interruption_prob = get_next_state(initial_state, applicable_actions[0])
     assert next_state.time == 4
     assert next_state.fluents == {Fluent("at robot1 living_room"), Fluent("free robot1")}
+    assert interruption_prob == 0

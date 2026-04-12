@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union, Callable, Tuple
 from railroad.core import Action, Goal, State, transition
 from railroad.core import (
     extract_negative_preconditions,
@@ -18,16 +18,25 @@ def get_action_cost(action: Action) -> float:
     return action.effects[-1].time + action.extra_cost
 
 
-def get_next_state(state: State, action: Action) -> State:
+def get_next_state(
+    state: State,
+    action: Action,
+    interrupting_prob_fn: Union[Callable[[State, Action], float], float] = 0
+) -> Tuple[State, float]:
     """
     Gets the state s' after performing an action a in s. This function
-    assumes the state transition is deterministic.
+    assumes the state transition is deterministic. Additionally, returns
+    the probability of an interrupting task arriving after the transition.
     """
+    if isinstance(interrupting_prob_fn, (float, int)):
+        interruption_prob = interrupting_prob_fn
+    else:
+        interruption_prob = interrupting_prob_fn(state, action)
     outcomes = transition(state, action)
     assert len(outcomes) == 1
     next_state, prob = outcomes[0]
     assert prob == 1.0
-    return next_state
+    return next_state, interruption_prob
 
 
 def negative_fluent_preprocessing(actions: List[Action], state: State, goals: List[Goal]):

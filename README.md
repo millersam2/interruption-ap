@@ -3,11 +3,10 @@ Project Repository for Anticipatory Planning for Interruptions
 
 Progress Log
 
-4/3 - 4/5:
+4/3 - 4/12:
 
 Implementation:
 TODO - 
-- revamp how interruption probabilities are defined/used
 - closure for heuristic function
 
 - basic interruption scenario with debug environment (no interruptions), for probability param tuning
@@ -38,12 +37,14 @@ DONE -
     - remove metastate as an argument to astar
     - construct_trajectory read from and pass value instead of whole cache
     - construct_trajectory implement as method rather than function
+- revamp how interruption probabilities are defined/used
 
 
 Testing:
 
 TODO -
 - add some additional context to tests
+- add additional testing for interruption_prob_fn
 
 DONE - 
 - get_action_cost

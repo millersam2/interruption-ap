@@ -32,11 +32,11 @@ def test_check_value_cache():
 
 
 def test_get_no_int_prob():
-    traj = Trajectory(state_history=[], plan=[])
+    traj = Trajectory(state_history=[], plan=[], interruption_probs=[])
     assert get_no_int_prob(traj) == 1
-    traj.level+=1
+    traj.interruption_probs.append(0.1)
     assert get_no_int_prob(traj) == 0.9
-    traj.level+=1
+    traj.interruption_probs.append(0.1)
     assert get_no_int_prob(traj) == 0.81
 
 
@@ -61,7 +61,7 @@ def test_discounted_accumulated_cost(interruption_value, solution):
         fluents={Fluent("at robot1 kitchen"), Fluent("free robot1")}
     )
 
-    traj = Trajectory(state_history=[initial_state], plan=[])
+    traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
     value_cache = {}
 
     # solution stores the discounted accumulated cost after taking an action
@@ -72,13 +72,16 @@ def test_discounted_accumulated_cost(interruption_value, solution):
         assert discounted_accumulated_cost(
             traj,
             applicable_actions[0],
-            interruption_value
+            interruption_value,
+            interruption_prob=0.1
         ) == pytest.approx(discounted_acc_cost)
 
         # update the trajectory
-        next_state = get_next_state(traj.state_history[-1], applicable_actions[0])
+        next_state, _ = get_next_state(traj.state_history[-1], applicable_actions[0])
         traj.level+=1
         traj.state_history.append(next_state)
+        traj.plan.append(applicable_actions[0])
+        traj.interruption_probs.append(0.1)
         traj.value = discounted_acc_cost
         traj.cost = discounted_acc_cost
 
@@ -102,18 +105,17 @@ def test_h():
 
     goal = Fluent("at robot1 living_room") & Fluent("free robot1")
 
-    traj = Trajectory(state_history=[initial_state], plan=[])
+    traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
     applicable_actions = get_next_actions(initial_state, move_actions)
     assert len(applicable_actions) == 1
     action = applicable_actions[0]
 
     # tests for when passed in hueristic_fn is an int
-    traj.level = 0
-    assert h(traj, action, goal, move_actions, 5) == 0.9 * 5
-    traj.level = 1
-    assert h(traj, action, goal, move_actions, 5) == pytest.approx(0.81 * 5)
-    traj.level = 2
-    assert h(traj, action, goal, move_actions, 5) == pytest.approx(0.729 * 5)
+    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1) == 0.9 * 5
+    traj.interruption_probs.append(0.1)
+    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1) == pytest.approx(0.81 * 5)
+    traj.interruption_probs.append(0.1)
+    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1) == pytest.approx(0.729 * 5)
 
 
 @pytest.mark.parametrize("heuristic_fn", [0, 5])
@@ -139,14 +141,15 @@ def test_construct_trajectory(heuristic_fn):
     applicable_actions = get_next_actions(initial_state, move_actions)
     assert len(applicable_actions) == 1
     action = applicable_actions[0]
-    new_state = get_next_state(initial_state, action)
+    new_state, next_interruption_prob = get_next_state(initial_state, action, 0.1)
 
-    traj = Trajectory(state_history=[initial_state], plan=[])
+    traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
     new_traj = traj.create_child(
         goal,
         move_actions,
         action,
         0,
+        next_interruption_prob,
         heuristic_fn
     )
 
@@ -157,6 +160,8 @@ def test_construct_trajectory(heuristic_fn):
     assert new_traj.state_history == [initial_state, new_state]
     assert len(new_traj.plan) == 1
     assert new_traj.plan == [action]
+    assert len(new_traj.interruption_probs) == 1
+    assert new_traj.interruption_probs == [0.1]
 
 
 @pytest.mark.parametrize("heuristic_fn", [0, 5, det_ff_heuristic])
