@@ -1,5 +1,7 @@
 from typing import List, Union, Callable, Tuple
-from railroad.core import Action, Goal, State, transition
+from railroad.core import (
+    Action, Goal, State, transition, Fluent as F, LiteralGoal, Operator, Effect
+)
 from railroad.core import (
     extract_negative_preconditions,
     extract_negative_goal_fluents,
@@ -44,6 +46,9 @@ def negative_fluent_preprocessing(actions: List[Action], state: State, goals: Li
     Wrapper function to convert negative fluents to equivalent positive fluents. Important
     when using the FF heuristic.
     """
+    # normalize goals if necessary
+    goals = [LiteralGoal(g) if isinstance(g, F) else g for g in goals]
+
     # build negative fluent to equivalent positive fluent mapping
     negative_preconditions = extract_negative_preconditions(actions)
     for goal in goals:
@@ -66,3 +71,27 @@ def negative_fluent_preprocessing(actions: List[Action], state: State, goals: Li
         converted_goal = convert_goal_to_positive_preconditions(goal, mapping)
         converted_goals.append(converted_goal)
     return converted_actions, converted_state, converted_goals, mapping
+
+
+def construct_assemble_operator(assemble_time: int):
+    """
+    Constructs an assemble sandwhich operator.
+    """
+    assemble = Operator(
+            name="assemble",
+            parameters=[
+                ("?r", "robot"), ("?o1", "object"), ("?o2", "object"), ("?l", "location")
+            ],
+            preconditions=[
+                F("free ?r"), F("is-turkey ?o1"), F("is-bread ?o2"), F("at ?o1 ?l"),
+                F("at ?o2 ?l"), F("at ?r ?l"), ~F("hand-full ?r"), F("prep-station ?l")
+            ],
+            effects=[
+                Effect(time=0, resulting_fluents={F("not free ?r"), F("hand-full ?r")}),
+                Effect(time=assemble_time, resulting_fluents={
+                    F("free ?r"), F("not at ?o1 ?l"), F("not at ?o2 ?l"),
+                    F("sandwhich-made"), ~F("hand-full ?r")
+                })
+            ]
+        )
+    return assemble

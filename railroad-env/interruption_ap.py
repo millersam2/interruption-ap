@@ -1,8 +1,8 @@
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Callable, Union
+from typing import Dict, Tuple, List, Callable, Union, Set
 import heapq
 from utilities import get_action_cost, get_next_state
-from railroad.core import State, Goal, Action, get_next_actions
+from railroad.core import State, Goal, Action, get_next_actions, Fluent
 
 # data structures for astar search
 @dataclass
@@ -45,6 +45,31 @@ class Trajectory:
             plan=self.plan + [action],
             interruption_probs=self.interruption_probs + [interruption_prob]
         )
+
+    def __eq__(self, other):
+        if not isinstance(other, Trajectory):
+            raise NotImplementedError
+        return self.value == other.value
+
+    def __lt__(self, other):
+        if not isinstance(other, Trajectory):
+            raise NotImplementedError
+        return self.value < other.value
+
+    def __le__(self, other):
+        if not isinstance(other, Trajectory):
+            raise NotImplementedError
+        return self.value <= other.value
+
+    def __gt__(self, other):
+        if not isinstance(other, Trajectory):
+            raise NotImplementedError
+        return self.value > other.value
+
+    def __ge__(self, other):
+        if not isinstance(other, Trajectory):
+            raise NotImplementedError
+        return self.value >= other.value
 
 
 def discounted_accumulated_cost(
@@ -95,22 +120,22 @@ def astar_search(
     interrupting_task_dist: Tuple[List[Goal], List[float]] | None,
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
     interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0.1,
-    num_steps: int = 1000
+    num_steps: int = 100000
 ) -> Tuple[List[Action], float]:
     """
     Astar algorithm implementation.
     """
-    value_cache: Dict[State, float] = dict()
+    value_cache: Dict[Tuple[Fluent], float] = {}
     frontier = []
 
     # initial trajectory
     initial_traj = Trajectory(state_history=[state], plan=[], interruption_probs=[])
-    heapq.heappush(frontier, (-1, initial_traj))
+    heapq.heappush(frontier, initial_traj)
 
     # search loop
     for _ in range(num_steps):
         # find expansion node
-        _, expand = heapq.heappop(frontier)
+        expand = heapq.heappop(frontier)
         curr_state = expand.state_history[-1]
 
         # check for goal condition being met
@@ -127,26 +152,29 @@ def astar_search(
                 interruption_prob_fn
             )
 
+            next_state_key = tuple(next_state.fluents)
             # value of next state for interrupting tasks needed and not found
             # compute and cache
-            if interrupting_task_dist and not check_value_cache(next_state, value_cache):
+            if interrupting_task_dist and not check_value_cache(next_state_key, value_cache):
+                # after an interrupting task has arrived once, we assume that another interrupting
+                # task cannot arrive. following that logic, the expected value of a state is not
+                # discounted.
                 val = compute_interruption_value(
-                    next_state, actions, interrupting_task_dist, heuristic_fn, interruption_prob_fn
+                    next_state, actions, interrupting_task_dist, heuristic_fn, 0
                 )
-                value_cache[next_state] = val
+                value_cache[next_state_key] = val
 
             # construct new trajectory
             # use get method instead of directly indexing value_cache to account for case where
             # there are no interrupting tasks
             child_traj = expand.create_child(
-                goal, actions, action, value_cache.get(next_state, 0),
+                goal, actions, action, value_cache.get(next_state_key, 0),
                 interruption_prob, heuristic_fn
             )
-            q_value = child_traj.value
-            heapq.heappush(frontier, (q_value, child_traj))
+            heapq.heappush(frontier, child_traj)
 
     # goal not reached, get best trajectory found
-    _, best_found = heapq.heappop(frontier)
+    best_found = heapq.heappop(frontier)
     return best_found.plan, best_found.cost
 
 
@@ -155,7 +183,7 @@ def compute_interruption_value(
     actions: List[Action],
     interrupting_task_dist: Tuple[List[Goal], List[float]],
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
-    interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0.1
+    interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0
 ) -> float:
     """
     Computes the expected value of a state for a task distribution.
@@ -170,11 +198,11 @@ def compute_interruption_value(
     return expected_cost
 
 
-def check_value_cache(state: State, value_cache: Dict[State, float]) -> bool:
+def check_value_cache(state: Tuple[Fluent], value_cache: Dict[Tuple[Fluent], float]) -> bool:
     """
     Checks if the value of a state is already cached.
     """
-    return True if value_cache.get(state) else False
+    return state in value_cache
 
 
 def get_no_int_prob(traj: Trajectory) -> float:

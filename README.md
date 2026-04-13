@@ -7,8 +7,9 @@ Progress Log
 
 Implementation:
 TODO - 
+- implement visited list to help with search time
 - closure for heuristic function
-
+- implement interruption_planner class to get the dashboard to work
 - basic interruption scenario with debug environment (no interruptions), for probability param tuning
 - basic interruption scenario with tuned parameter for actual interruption environment
 
@@ -38,6 +39,8 @@ DONE -
     - construct_trajectory read from and pass value instead of whole cache
     - construct_trajectory implement as method rather than function
 - revamp how interruption probabilities are defined/used
+- implemented comparison operators for trajectory class due to error being raised when pushing tuples of (q_value, traj)
+    on to the frontier (due to multiple trajectories having the same q_value)
 
 
 Testing:

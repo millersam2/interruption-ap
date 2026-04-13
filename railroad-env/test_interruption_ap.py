@@ -1,10 +1,12 @@
+import numpy as np
 import pytest
-from railroad.core import State, Fluent, get_next_actions, det_ff_heuristic
+from railroad.core import State, Fluent as F, get_next_actions, det_ff_heuristic
 from railroad.operators.core import (
     construct_move_operator,
     construct_pick_operator,
     construct_place_operator
 )
+from railroad.environment.symbolic import SymbolicEnvironment
 from interruption_ap import (
     check_value_cache,
     get_no_int_prob,
@@ -14,14 +16,14 @@ from interruption_ap import (
     compute_interruption_value,
     Trajectory
 )
-from utilities import get_next_state
+from utilities import get_next_state, construct_assemble_operator, negative_fluent_preprocessing
 
 INTERRUPTION_PROB = 0.1
 
 def test_check_value_cache():
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1")}
+        fluents={F("at robot1 kitchen"), F("free robot1")}
     )
 
     value_cache = {}
@@ -58,7 +60,7 @@ def test_discounted_accumulated_cost(interruption_value, solution):
 
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1")}
+        fluents={F("at robot1 kitchen"), F("free robot1")}
     )
 
     traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
@@ -100,10 +102,10 @@ def test_h():
 
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1")}
+        fluents={F("at robot1 kitchen"), F("free robot1")}
     )
 
-    goal = Fluent("at robot1 living_room") & Fluent("free robot1")
+    goal = F("at robot1 living_room") & F("free robot1")
 
     traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
     applicable_actions = get_next_actions(initial_state, move_actions)
@@ -133,10 +135,10 @@ def test_construct_trajectory(heuristic_fn):
 
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1")}
+        fluents={F("at robot1 kitchen"), F("free robot1")}
     )
 
-    goal = Fluent("at robot1 living_room") & Fluent("free robot1")
+    goal = F("at robot1 living_room") & F("free robot1")
 
     applicable_actions = get_next_actions(initial_state, move_actions)
     assert len(applicable_actions) == 1
@@ -179,10 +181,10 @@ def test_astart_search_noint(heuristic_fn):
 
     initial_state = State(
         time=0,
-        fluents={Fluent("at robot1 kitchen"), Fluent("free robot1")}
+        fluents={F("at robot1 kitchen"), F("free robot1")}
     )
 
-    goal = Fluent("at robot1 living_room") & Fluent("free robot1")
+    goal = F("at robot1 living_room") & F("free robot1")
 
     # testing with no interrupting tasks
     plan, plan_cost = astar_search(initial_state, goal, move_actions, None, heuristic_fn)
@@ -208,15 +210,15 @@ def test_astart_search_noint(heuristic_fn):
     initial_state = State(
         time=0,
         fluents={
-            Fluent("at robot1 kitchen"), Fluent("free robot1"),
-            Fluent("at water_bottle kitchen"), ~Fluent("hand-full robot1")
+            F("at robot1 kitchen"), F("free robot1"),
+            F("at water_bottle kitchen"), ~F("hand-full robot1")
         }
     )
 
     goal = (
-        Fluent("at robot1 living_room") &
-        Fluent("free robot1") &
-        Fluent("at water_bottle living_room")
+        F("at robot1 living_room") &
+        F("free robot1") &
+        F("at water_bottle living_room")
     )
 
     plan, plan_cost = astar_search(initial_state, goal, all_actions, None, heuristic_fn)
@@ -232,13 +234,13 @@ def test_astart_search_noint(heuristic_fn):
 
 
 @pytest.mark.parametrize("task_distribution", [
-    ([Fluent("at robot1 living_room") & Fluent("free robot1")], [1]),
+    ([F("at robot1 living_room") & F("free robot1")], [1]),
     (
         [
-            Fluent("at robot1 living_room") & Fluent("free robot1"),
-            Fluent("at robot1 living_room") &
-            Fluent("free robot1") &
-            Fluent("at water_bottle living_room")
+            F("at robot1 living_room") & F("free robot1"),
+            F("at robot1 living_room") &
+            F("free robot1") &
+            F("at water_bottle living_room")
         ], [0.5, 0.5]
     )
 ])
@@ -261,10 +263,10 @@ def test_compute_interruption_value(task_distribution):
     initial_state = State(
         time=0,
         fluents={
-            Fluent("at robot1 kitchen"),
-            Fluent("free robot1"),
-            Fluent("at water_bottle kitchen"),
-            ~Fluent("hand-full robot1")
+            F("at robot1 kitchen"),
+            F("free robot1"),
+            F("at water_bottle kitchen"),
+            ~F("hand-full robot1")
         }
     )
     expected_value = compute_interruption_value(initial_state, all_actions, task_distribution)
@@ -272,4 +274,83 @@ def test_compute_interruption_value(task_distribution):
     if len(task_distribution[0]) == 1:
         assert expected_value == 4
     else:
-        assert expected_value == pytest.approx(0.5*4 + 0.5*(3 + 4 * 0.9 + 2 * 0.81))
+        assert expected_value == pytest.approx(0.5*4 + 0.5*(3 + 4 + 2))
+
+@pytest.mark.parametrize("heuristic_fn", [0, det_ff_heuristic])
+def test_optimal_make_sandwhich_noint(heuristic_fn):
+    # setup
+    locations = {
+            "refrigerator": np.array([0, 0]),
+            "pantry": np.array([1, 0]),
+            "countertop1": np.array([1,1]),
+            "countertop2": np.array([2,2]),
+            "table": np.array([0,2])
+    }
+
+    objects_by_type = {
+        "robot": {"robot1"},
+        "location": set(locations),
+        "object": {"turkey", "bread"}
+    }
+
+    pick_time = 1
+    place_time = 1
+    assemble_time = 3
+
+    # define operators
+    def move_time(robot, loc_from, loc_to):
+        return float(np.linalg.norm(locations[loc_from] - locations[loc_to]))
+
+    move = construct_move_operator(move_time)
+    pick = construct_pick_operator(pick_time)
+    place = construct_place_operator(place_time)
+    assemble = construct_assemble_operator(assemble_time)
+
+    # Setup task planning environment
+    initial_fluents = {
+        F("free robot1"), F("at robot1 table"), F("is-turkey turkey"), F("is-bread bread"),
+        ~F("hand-full robot1"), F("at turkey refrigerator"), F("at bread pantry"),
+        ~F("prep-station table"), F("prep-station countertop2"), ~F("prep-station refrigerator"),
+        ~F("sandwhich-made"), F("prep-station countertop1")
+    }
+
+    initial_state = State(0.0, initial_fluents)
+
+    env = SymbolicEnvironment(
+        state=initial_state, objects_by_type=objects_by_type,
+        operators=[move, pick, place, assemble],
+    )
+
+    # Task: make sandwhich
+    goal = F("sandwhich-made")
+
+    # fluent pre-processing for usage of FF heuristic
+    actions, initial_state, converted_goals, _= negative_fluent_preprocessing(
+        env.get_actions(), initial_state, [goal]
+    )
+
+    goal = converted_goals[0]
+
+    plan, cost = astar_search(
+        initial_state,
+        goal,
+        actions,
+        None,
+        heuristic_fn,
+        0.0,
+        num_steps=10000000
+    )
+
+    assert cost == pytest.approx(12.414213562373096)
+    solution = [
+        'move robot1 table refrigerator',
+        'pick robot1 refrigerator turkey',
+        'move robot1 refrigerator countertop1',
+        'place robot1 countertop1 turkey',
+        'move robot1 countertop1 pantry',
+        'pick robot1 pantry bread',
+        'move robot1 pantry countertop1',
+        'place robot1 countertop1 bread',
+        'assemble robot1 turkey bread countertop1'
+    ]
+    assert [a.name for a in plan] == solution
