@@ -113,11 +113,11 @@ def test_h():
     action = applicable_actions[0]
 
     # tests for when passed in hueristic_fn is an int
-    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1) == 0.9 * 5
+    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1)[0] == 0.9 * 5
     traj.interruption_probs.append(0.1)
-    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1) == pytest.approx(0.81 * 5)
+    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1)[0] == pytest.approx(0.81 * 5)
     traj.interruption_probs.append(0.1)
-    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1) == pytest.approx(0.729 * 5)
+    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1)[0] == pytest.approx(0.729 * 5)
 
 
 @pytest.mark.parametrize("heuristic_fn", [0, 5])

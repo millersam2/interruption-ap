@@ -17,6 +17,8 @@ class Trajectory:
     cost: float = 0.0
     value: float = 0.0
     level: int = 0
+    h_value: float = 0.0
+    discounted_h_value: float = 0.0
 
     def create_child(
         self,
@@ -35,7 +37,9 @@ class Trajectory:
             self, action, interruption_value, interruption_prob
         )
         next_state, _ = get_next_state(self.state_history[-1], action)
-        estimated_future_cost = h(self, action, goal, actions, heuristic_fn, interruption_prob)
+        estimated_future_cost, q_value = h(
+            self, action, goal, actions, heuristic_fn, interruption_prob
+        )
 
         return Trajectory(
             cost=accumulated_cost,
@@ -43,7 +47,9 @@ class Trajectory:
             level=self.level+1,
             state_history=self.state_history + [next_state],
             plan=self.plan + [action],
-            interruption_probs=self.interruption_probs + [interruption_prob]
+            interruption_probs=self.interruption_probs + [interruption_prob],
+            h_value=q_value,
+            discounted_h_value=estimated_future_cost
         )
 
     def __eq__(self, other):
@@ -100,9 +106,10 @@ def h(
     all_actions: List[Action],
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]],
     next_interruption_prob: float
-) -> float:
+) -> Tuple[float, float]:
     """
     Heuristic function used to estimate the cost remaining for the trajectory.
+    Returns both the q_value and the discounted q_value.
     """
     if not isinstance(heuristic_fn, (int, float)):
         next_state, _ = get_next_state(traj.state_history[-1], action)
@@ -110,7 +117,7 @@ def h(
     else:
         estimated_q_value = heuristic_fn
     estimated_q_value *= (1 - next_interruption_prob)
-    return get_no_int_prob(traj) * estimated_q_value
+    return get_no_int_prob(traj) * estimated_q_value, estimated_q_value
 
 
 def astar_search(
@@ -120,7 +127,8 @@ def astar_search(
     interrupting_task_dist: Tuple[List[Goal], List[float]] | None,
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
     interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0.1,
-    num_steps: int = 100000
+    num_steps: int = 100000,
+    print_trace: bool = False
 ) -> Tuple[List[Action], float]:
     """
     Astar algorithm implementation.
@@ -133,7 +141,11 @@ def astar_search(
     heapq.heappush(frontier, initial_traj)
 
     # search loop
-    for _ in range(num_steps):
+    for i in range(num_steps):
+        # some logging functionality for debugging
+        if print_trace and interrupting_task_dist:
+            print_frontier_trace(i, frontier)
+
         # find expansion node
         expand = heapq.heappop(frontier)
         curr_state = expand.state_history[-1]
@@ -214,3 +226,16 @@ def get_no_int_prob(traj: Trajectory) -> float:
     for prob in traj.interruption_probs:
         no_int_prob*=(1 - prob)
     return no_int_prob
+
+# debug helper functions
+def print_frontier_trace(step: int, frontier: List[Trajectory]) -> None:
+    """
+    Prints out a trace of the trajectories currently stored in the frontier.
+    """
+    print(f"Planning Step: {step}")
+    print("Frontier:\n")
+    for j, traj in enumerate(frontier[:10]):
+        print(f"Trajectory {j}: Discounted Cost - {traj.cost}; Value - {traj.value}")
+        print(f"Discounted Heuristic Value - {traj.discounted_h_value}\
+            ; Heuristic Value - {traj.h_value}")
+        print(f"{[a.name for a in traj.plan]}\n")

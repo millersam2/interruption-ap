@@ -75,18 +75,19 @@ def main():
         actions,
         interrupting_task_dist,
         det_ff_heuristic,
-        0.5,
-        num_steps=100000
+        0.1,
+        # num_steps=10
+        num_steps=1000000,
+        print_trace=True
     )
 
     # temporary, very basic plan outputs for debugging
     action_names = [action.name for action in plan]
-    print(f"Plan: {action_names}")
+    print(f"Best Plan: {action_names}")
     print(f"Discounted Plan Cost: {cost}")
 
 
 # helper functions
-
 def construct_initial_state() -> State:
     """
     Constructs the initial state of the environment.
