@@ -1,8 +1,6 @@
 import numpy as np
-from railroad.core import Fluent as F, get_action_by_name, State, Operator, Effect, det_ff_heuristic
+from railroad.core import Fluent as F, State, det_ff_heuristic
 from railroad.environment import SymbolicEnvironment
-# from railroad.planner import MCTSPlanner
-# from railroad.dashboard import PlannerDashboard
 from railroad.operators.core import construct_move_operator, construct_pick_operator, \
     construct_place_operator
 from interruption_ap import astar_search
@@ -23,8 +21,8 @@ OBJECTS_BY_TYPE = {
     "object": {"turkey", "bread"}
 }
 
-PICK_TIME = 1
-PLACE_TIME = 1
+PICK_TIME = 3
+PLACE_TIME =3
 ASSEMBLE_TIME = 3
 
 def main():
@@ -76,8 +74,8 @@ def main():
         interrupting_task_dist,
         det_ff_heuristic,
         0.1,
-        # num_steps=10
-        num_steps=1000000,
+        num_steps=1000,
+        # num_steps=100000,
         print_trace=True
     )
 

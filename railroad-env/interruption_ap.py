@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Tuple, List, Callable, Union, Set
+from typing import Dict, Tuple, List, Callable, Union
 import heapq
 from utilities import get_action_cost, get_next_state
 from railroad.core import State, Goal, Action, get_next_actions, Fluent
@@ -51,6 +51,15 @@ class Trajectory:
             h_value=q_value,
             discounted_h_value=estimated_future_cost
         )
+
+    def get_plan_cost(self):
+        """
+        Returns actual cost of a trajectory, without factoring the interruption probabilities.
+        """
+        plan_cost = 0
+        for act in self.plan:
+            plan_cost+=get_action_cost(act)
+        return plan_cost
 
     def __eq__(self, other):
         if not isinstance(other, Trajectory):
@@ -116,8 +125,8 @@ def h(
         estimated_q_value = heuristic_fn(next_state, goal, all_actions)
     else:
         estimated_q_value = heuristic_fn
-    estimated_q_value *= (1 - next_interruption_prob)
-    return get_no_int_prob(traj) * estimated_q_value, estimated_q_value
+    discounted_q_value = get_no_int_prob(traj) * (1 - next_interruption_prob) * estimated_q_value
+    return discounted_q_value, estimated_q_value
 
 
 def astar_search(
@@ -136,9 +145,8 @@ def astar_search(
     value_cache: Dict[Tuple[Fluent], float] = {}
     frontier = []
 
-    # initial trajectory
     initial_traj = Trajectory(state_history=[state], plan=[], interruption_probs=[])
-    heapq.heappush(frontier, initial_traj)
+    heapq.heappush(frontier, (initial_traj, -1))
 
     # search loop
     for i in range(num_steps):
@@ -147,7 +155,7 @@ def astar_search(
             print_frontier_trace(i, frontier)
 
         # find expansion node
-        expand = heapq.heappop(frontier)
+        expand, _ = heapq.heappop(frontier)
         curr_state = expand.state_history[-1]
 
         # check for goal condition being met
@@ -183,10 +191,10 @@ def astar_search(
                 goal, actions, action, value_cache.get(next_state_key, 0),
                 interruption_prob, heuristic_fn
             )
-            heapq.heappush(frontier, child_traj)
+            heapq.heappush(frontier, (child_traj, child_traj.h_value))
 
     # goal not reached, get best trajectory found
-    best_found = heapq.heappop(frontier)
+    best_found, _ = heapq.heappop(frontier)
     return best_found.plan, best_found.cost
 
 
@@ -228,14 +236,17 @@ def get_no_int_prob(traj: Trajectory) -> float:
     return no_int_prob
 
 # debug helper functions
-def print_frontier_trace(step: int, frontier: List[Trajectory]) -> None:
+def print_frontier_trace(step: int, frontier: List[Tuple[Trajectory, float]]) -> None:
     """
     Prints out a trace of the trajectories currently stored in the frontier.
     """
     print(f"Planning Step: {step}")
-    print("Frontier:\n")
-    for j, traj in enumerate(frontier[:10]):
-        print(f"Trajectory {j}: Discounted Cost - {traj.cost}; Value - {traj.value}")
-        print(f"Discounted Heuristic Value - {traj.discounted_h_value}\
-            ; Heuristic Value - {traj.h_value}")
-        print(f"{[a.name for a in traj.plan]}\n")
+    print(f"Frontier: # of trajectories in frontier = {len(frontier)}\n")
+    sorted_frontier = sorted(frontier, key=lambda x: x[0])
+    for j, traj_tuple in enumerate(sorted_frontier[:10]):
+        traj = traj_tuple[0]
+        print(f"Trajectory {j}:")
+        print(f"Value - {traj.value}")
+        print(f"Discounted Cost - {traj.cost}; Plan Cost - {traj.get_plan_cost()}")
+        print(f"Discounted h-value - {traj.discounted_h_value}; h-value - {traj.h_value}")
+        print(f"Last 5 actions in trajectory: {[a.name for a in traj.plan]}\n")
