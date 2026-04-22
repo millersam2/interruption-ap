@@ -38,7 +38,8 @@ class Trajectory:
         )
         next_state, _ = get_next_state(self.state_history[-1], action)
         estimated_future_cost, q_value = h(
-            self, action, goal, actions, heuristic_fn, interruption_prob
+            self, action, goal, actions, heuristic_fn, interruption_prob,
+            interruption_value
         )
 
         return Trajectory(
@@ -114,7 +115,8 @@ def h(
     goal: Goal,
     all_actions: List[Action],
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]],
-    next_interruption_prob: float
+    next_interruption_prob: float,
+    next_interruption_value: float
 ) -> Tuple[float, float]:
     """
     Heuristic function used to estimate the cost remaining for the trajectory.
@@ -126,7 +128,21 @@ def h(
     else:
         estimated_q_value = heuristic_fn
     discounted_q_value = get_no_int_prob(traj) * (1 - next_interruption_prob) * estimated_q_value
-    return discounted_q_value, estimated_q_value
+
+
+    reward = get_no_int_prob(traj) * (1 - next_interruption_prob) * -15
+
+    # reward term for completing the current task
+    # current_task_priority = 0.2
+    # reward = current_task_priority * estimated_q_value + (1 - current_task_priority) * next_interruption_value
+
+
+    # reward = (1 - next_interruption_prob) * (estimated_q_value + next_interruption_value)
+    # reward = (1 - next_interruption_prob) * estimated_q_value
+
+    # reward += (3 * (traj.level+1))
+    return discounted_q_value+reward, estimated_q_value
+    # return discounted_q_value, estimated_q_value
 
 
 def astar_search(
@@ -242,10 +258,10 @@ def print_frontier_trace(step: int, frontier: List[Tuple[Trajectory, float]]) ->
     """
     print(f"Planning Step: {step}")
     print(f"Frontier: # of trajectories in frontier = {len(frontier)}\n")
-    sorted_frontier = sorted(frontier, key=lambda x: x[0])
-    for j, traj_tuple in enumerate(sorted_frontier[:10]):
+    # sorted_frontier = sorted(frontier, key=lambda x: x[0])
+    for j, traj_tuple in enumerate(frontier[:5]):
         traj = traj_tuple[0]
-        print(f"Trajectory {j}:")
+        print(f"Trajectory {j}: length - {traj.level}")
         print(f"Value - {traj.value}")
         print(f"Discounted Cost - {traj.cost}; Plan Cost - {traj.get_plan_cost()}")
         print(f"Discounted h-value - {traj.discounted_h_value}; h-value - {traj.h_value}")

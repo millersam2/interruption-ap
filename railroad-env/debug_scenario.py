@@ -21,9 +21,9 @@ OBJECTS_BY_TYPE = {
     "object": {"turkey", "bread"}
 }
 
-PICK_TIME = 3
-PLACE_TIME =3
-ASSEMBLE_TIME = 3
+PICK_TIME = 1
+PLACE_TIME =1
+ASSEMBLE_TIME = 1
 
 def main():
     """Debugging scenario for interruption ap planner, where the planner
@@ -34,7 +34,7 @@ def main():
     def move_time(robot, loc_from, loc_to):
         return float(np.linalg.norm(LOCATIONS[loc_from] - LOCATIONS[loc_to]))
 
-    move = construct_move_operator(move_time)
+    move = construct_move_operator(1)
     pick = construct_pick_operator(PICK_TIME)
     place = construct_place_operator(PLACE_TIME)
     assemble = construct_assemble_operator(ASSEMBLE_TIME)
@@ -49,6 +49,11 @@ def main():
 
     # Task: make sandwhich
     goal = F("sandwhich-made")
+    # goal = (F("at turkey countertop1") | F("at turkey countertop2"))
+    # goal = (
+    #     (F("at bread countertop1") & F("at turkey countertop1")) |
+    #     (F("at bread countertop2") & F("at turkey countertop2"))
+    # )
 
     # Interrupting Task Distribution: Clean-off countertop1
     interrupting_task_dist = (
@@ -73,8 +78,9 @@ def main():
         actions,
         interrupting_task_dist,
         det_ff_heuristic,
-        0.1,
-        num_steps=1000,
+        # 0,
+        0,
+        num_steps=1000000,
         # num_steps=100000,
         print_trace=True
     )
