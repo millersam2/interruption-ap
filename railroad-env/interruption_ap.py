@@ -27,7 +27,8 @@ class Trajectory:
         action: Action,
         interruption_value: float,
         interruption_prob: float,
-        heuristic_fn: Union[float, Callable[[State, Goal, List[Action]], float]] = 0
+        heuristic_fn: Union[float, Callable[[State, Goal, List[Action]], float]] = 0,
+        current_task_reward: float = 0
     ) -> 'Trajectory':
         """
         Helper function for creation of trajectories on the frontier.
@@ -38,8 +39,8 @@ class Trajectory:
         )
         next_state, _ = get_next_state(self.state_history[-1], action)
         estimated_future_cost, q_value = h(
-            self, action, goal, actions, heuristic_fn, interruption_prob,
-            interruption_value
+            self, next_state, goal, actions, heuristic_fn, interruption_prob,
+            current_task_reward
         )
 
         return Trajectory(
@@ -111,38 +112,28 @@ def discounted_accumulated_cost(
 
 def h(
     traj: Trajectory,
-    action: Action,
+    state: State,
     goal: Goal,
     all_actions: List[Action],
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]],
     next_interruption_prob: float,
-    next_interruption_value: float
+    reward: float
 ) -> Tuple[float, float]:
     """
     Heuristic function used to estimate the cost remaining for the trajectory.
-    Returns both the q_value and the discounted q_value.
+    Returns both the q_value and the discounted q_value, including any rewards
+    for completing the current task.
     """
     if not isinstance(heuristic_fn, (int, float)):
-        next_state, _ = get_next_state(traj.state_history[-1], action)
-        estimated_q_value = heuristic_fn(next_state, goal, all_actions)
+        estimated_q_value = heuristic_fn(state, goal, all_actions)
     else:
         estimated_q_value = heuristic_fn
-    discounted_q_value = get_no_int_prob(traj) * (1 - next_interruption_prob) * estimated_q_value
 
+    discount = get_no_int_prob(traj) * (1 - next_interruption_prob)
+    # reward term used to incentivize the completion of the current ask
+    discounted_q_value = discount * (estimated_q_value + reward)
 
-    reward = get_no_int_prob(traj) * (1 - next_interruption_prob) * -15
-
-    # reward term for completing the current task
-    # current_task_priority = 0.2
-    # reward = current_task_priority * estimated_q_value + (1 - current_task_priority) * next_interruption_value
-
-
-    # reward = (1 - next_interruption_prob) * (estimated_q_value + next_interruption_value)
-    # reward = (1 - next_interruption_prob) * estimated_q_value
-
-    # reward += (3 * (traj.level+1))
     return discounted_q_value+reward, estimated_q_value
-    # return discounted_q_value, estimated_q_value
 
 
 def astar_search(
@@ -152,6 +143,7 @@ def astar_search(
     interrupting_task_dist: Tuple[List[Goal], List[float]] | None,
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
     interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0.1,
+    current_task_reward: float = 0,
     num_steps: int = 100000,
     print_trace: bool = False
 ) -> Tuple[List[Action], float]:
@@ -205,7 +197,7 @@ def astar_search(
             # there are no interrupting tasks
             child_traj = expand.create_child(
                 goal, actions, action, value_cache.get(next_state_key, 0),
-                interruption_prob, heuristic_fn
+                interruption_prob, heuristic_fn, current_task_reward
             )
             heapq.heappush(frontier, (child_traj, child_traj.h_value))
 
@@ -262,7 +254,7 @@ def print_frontier_trace(step: int, frontier: List[Tuple[Trajectory, float]]) ->
     for j, traj_tuple in enumerate(frontier[:5]):
         traj = traj_tuple[0]
         print(f"Trajectory {j}: length - {traj.level}")
-        print(f"Value - {traj.value}")
-        print(f"Discounted Cost - {traj.cost}; Plan Cost - {traj.get_plan_cost()}")
-        print(f"Discounted h-value - {traj.discounted_h_value}; h-value - {traj.h_value}")
+        print(f"Value: {traj.value}")
+        print(f"Discounted Cost: {traj.cost}; Plan Cost: {traj.get_plan_cost()}")
+        print(f"Discounted h-value: {traj.discounted_h_value}; h-value: {traj.h_value}")
         print(f"Last 5 actions in trajectory: {[a.name for a in traj.plan]}\n")

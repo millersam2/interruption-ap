@@ -80,17 +80,20 @@ def construct_assemble_operator(assemble_time: int):
     assemble = Operator(
             name="assemble",
             parameters=[
-                ("?r", "robot"), ("?o1", "object"), ("?o2", "object"), ("?l", "location")
+                ("?r", "robot"), ("?o1", "object"), ("?o2", "object"),
+                ("?o3", "object"), ("?l", "location")
             ],
             preconditions=[
                 F("free ?r"), F("is-turkey ?o1"), F("is-bread ?o2"), F("at ?o1 ?l"),
-                F("at ?o2 ?l"), F("at ?r ?l"), ~F("hand-full ?r"), F("prep-station ?l")
+                F("at ?o2 ?l"), F("at ?r ?l"), ~F("hand-full ?r"), F("prep-station ?l"),
+                F("is-sandwhich ?o3")
             ],
             effects=[
                 Effect(time=0, resulting_fluents={F("not free ?r"), F("hand-full ?r")}),
                 Effect(time=assemble_time, resulting_fluents={
                     F("free ?r"), F("not at ?o1 ?l"), F("not at ?o2 ?l"),
-                    F("sandwhich-made"), ~F("hand-full ?r")
+                    F("sandwhich-made"), ~F("hand-full ?r"),
+                    F("at ?o3 ?l")
                 })
             ]
         )

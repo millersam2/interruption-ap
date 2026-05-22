@@ -25,12 +25,13 @@ def test_check_value_cache():
         time=0,
         fluents={F("at robot1 kitchen"), F("free robot1")}
     )
+    initial_fluents = tuple(initial_state.fluents)
 
     value_cache = {}
-    assert not check_value_cache(initial_state, value_cache)
+    assert not check_value_cache(initial_fluents, value_cache)
 
-    value_cache[initial_state] = 2.5
-    assert check_value_cache(initial_state, value_cache)
+    value_cache[initial_fluents] = 2.5
+    assert check_value_cache(initial_fluents, value_cache)
 
 
 def test_get_no_int_prob():
@@ -111,13 +112,16 @@ def test_h():
     applicable_actions = get_next_actions(initial_state, move_actions)
     assert len(applicable_actions) == 1
     action = applicable_actions[0]
+    next_state, interruption_prob = get_next_state(initial_state, action, 0.1)
 
     # tests for when passed in hueristic_fn is an int
-    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1)[0] == 0.9 * 5
+    assert h(traj, next_state, goal, move_actions, 5, interruption_prob, 0)[0] == 0.9 * 5
     traj.interruption_probs.append(0.1)
-    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1)[0] == pytest.approx(0.81 * 5)
+    assert h(traj, next_state, goal, move_actions, 5, interruption_prob, 0)[0] == \
+        pytest.approx(0.81 * 5)
     traj.interruption_probs.append(0.1)
-    assert h(traj, action, goal, move_actions, 5, next_interruption_prob=0.1)[0] == pytest.approx(0.729 * 5)
+    assert h(traj, next_state, goal, move_actions, 5, interruption_prob, 0)[0] == \
+        pytest.approx(0.729 * 5)
 
 
 @pytest.mark.parametrize("heuristic_fn", [0, 5])
@@ -290,7 +294,7 @@ def test_optimal_make_sandwhich_noint(heuristic_fn):
     objects_by_type = {
         "robot": {"robot1"},
         "location": set(locations),
-        "object": {"turkey", "bread"}
+        "object": {"turkey", "bread", "sandwhich"}
     }
 
     pick_time = 1
@@ -311,7 +315,7 @@ def test_optimal_make_sandwhich_noint(heuristic_fn):
         F("free robot1"), F("at robot1 table"), F("is-turkey turkey"), F("is-bread bread"),
         ~F("hand-full robot1"), F("at turkey refrigerator"), F("at bread pantry"),
         ~F("prep-station table"), F("prep-station countertop2"), ~F("prep-station refrigerator"),
-        ~F("sandwhich-made"), F("prep-station countertop1")
+        ~F("sandwhich-made"), F("prep-station countertop1"), F("is-sandwhich sandwhich")
     }
 
     initial_state = State(0.0, initial_fluents)
@@ -338,7 +342,7 @@ def test_optimal_make_sandwhich_noint(heuristic_fn):
         None,
         heuristic_fn,
         0.0,
-        num_steps=10000000
+        num_steps=1000000
     )
 
     assert cost == pytest.approx(12.414213562373096)
@@ -351,6 +355,6 @@ def test_optimal_make_sandwhich_noint(heuristic_fn):
         'pick robot1 pantry bread',
         'move robot1 pantry countertop1',
         'place robot1 countertop1 bread',
-        'assemble robot1 turkey bread countertop1'
+        'assemble robot1 turkey bread sandwhich countertop1'
     ]
     assert [a.name for a in plan] == solution

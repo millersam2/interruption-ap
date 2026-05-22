@@ -3,15 +3,14 @@ Project Repository for Anticipatory Planning for Interruptions
 
 Progress Log
 
-4/3 - 4/12:
+4/3 - 5/22:
 
 Implementation:
 TODO - 
 - implement visited list to help with search time
 - closure for heuristic function
-- implement interruption_planner class to get the dashboard to work
-- basic interruption scenario with debug environment (no interruptions), for probability param tuning
-- basic interruption scenario with tuned parameter for actual interruption environment
+- run experiments using the benchmark suite
+- log 
 
 DONE - 
 - Data Class for trajectories:
@@ -41,6 +40,8 @@ DONE -
 - revamp how interruption probabilities are defined/used
 - implemented comparison operators for trajectory class due to error being raised when pushing tuples of (q_value, traj)
     on to the frontier (due to multiple trajectories having the same q_value)
+- basic interruption scenario with debug environment (no interruptions), for probability param tuning
+- basic interruption scenario with tuned parameter for actual interruption environment
 
 
 Testing:
@@ -48,6 +49,7 @@ Testing:
 TODO -
 - add some additional context to tests
 - add additional testing for interruption_prob_fn
+- add additional testing for current task rewards
 
 DONE - 
 - get_action_cost
@@ -59,3 +61,8 @@ DONE -
 - compute_interruption_value
 - astar_search
 - split g into two tests using a helper function
+
+Writing:
+
+TODO - 
+- rewrite the approach section to reflect feedback

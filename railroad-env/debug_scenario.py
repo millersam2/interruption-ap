@@ -18,7 +18,7 @@ LOCATIONS = {
 OBJECTS_BY_TYPE = {
     "robot": {"robot1"},
     "location": set(LOCATIONS),
-    "object": {"turkey", "bread"}
+    "object": {"turkey", "bread", "sandwhich"}
 }
 
 PICK_TIME = 1
@@ -34,7 +34,7 @@ def main():
     def move_time(robot, loc_from, loc_to):
         return float(np.linalg.norm(LOCATIONS[loc_from] - LOCATIONS[loc_to]))
 
-    move = construct_move_operator(1)
+    move = construct_move_operator(move_time)
     pick = construct_pick_operator(PICK_TIME)
     place = construct_place_operator(PLACE_TIME)
     assemble = construct_assemble_operator(ASSEMBLE_TIME)
@@ -58,7 +58,10 @@ def main():
     # Interrupting Task Distribution: Clean-off countertop1
     interrupting_task_dist = (
         [
-            (~F("at turkey countertop1") & ~F("at bread countertop1") & ~F("hand-full robot1"))
+            (
+                ~F("at turkey countertop2") & ~F("at bread countertop2") &
+                ~F("hand-full robot1") & ~F("at sandwhich countertop2")
+            )
         ],
         [1.0]
     )
@@ -76,12 +79,11 @@ def main():
         initial_state,
         goal,
         actions,
-        interrupting_task_dist,
+        None,
         det_ff_heuristic,
-        # 0,
+        0,
         0,
         num_steps=1000000,
-        # num_steps=100000,
         print_trace=True
     )
 
@@ -101,7 +103,7 @@ def construct_initial_state() -> State:
         F("free robot1"), F("at robot1 table"), F("is-turkey turkey"), F("is-bread bread"),
         ~F("hand-full robot1"), F("at turkey refrigerator"), F("at bread pantry"),
         ~F("prep-station table"), F("prep-station countertop2"), ~F("prep-station refrigerator"),
-        ~F("sandwhich-made"), F("prep-station countertop1")
+        ~F("sandwhich-made"), F("prep-station countertop1"), F("is-sandwhich sandwhich")
     }
     return State(0.0, initial_fluents)
 
