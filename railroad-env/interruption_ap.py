@@ -133,7 +133,7 @@ def h(
     # reward term used to incentivize the completion of the current ask
     discounted_q_value = discount * (estimated_q_value + reward)
 
-    return discounted_q_value+reward, estimated_q_value
+    return discounted_q_value, estimated_q_value
 
 
 def astar_search(
@@ -142,7 +142,7 @@ def astar_search(
     actions: List[Action],
     interrupting_task_dist: Tuple[List[Goal], List[float]] | None,
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
-    interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0.1,
+    interruption_prob_fn: Union[float, Callable[[float], float]] = 0.1,
     current_task_reward: float = 0,
     num_steps: int = 100000,
     print_trace: bool = False
@@ -211,7 +211,7 @@ def compute_interruption_value(
     actions: List[Action],
     interrupting_task_dist: Tuple[List[Goal], List[float]],
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
-    interruption_prob_fn: Union[float, Callable[[State, Action], float]] = 0
+    interruption_prob_fn: Union[float, Callable[[float], float]] = 0
 ) -> float:
     """
     Computes the expected value of a state for a task distribution.

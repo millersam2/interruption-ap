@@ -1,4 +1,5 @@
 import numpy as np
+from functools import partial
 import pytest
 from railroad.core import State, Fluent as F, get_next_actions, det_ff_heuristic
 from railroad.operators.core import (
@@ -16,7 +17,13 @@ from interruption_ap import (
     compute_interruption_value,
     Trajectory
 )
-from utilities import get_next_state, construct_assemble_operator, negative_fluent_preprocessing
+from utilities import (
+    get_next_state,
+    construct_assemble_operator,
+    negative_fluent_preprocessing,
+    get_task_arrival_prob,
+    RandomVariableType
+)
 
 INTERRUPTION_PROB = 0.1
 
@@ -65,7 +72,7 @@ def test_discounted_accumulated_cost(interruption_value, solution):
     )
 
     traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
-    value_cache = {}
+    # value_cache = {}
 
     # solution stores the discounted accumulated cost after taking an action
     # from the current state of the trajectory
@@ -122,6 +129,42 @@ def test_h():
     traj.interruption_probs.append(0.1)
     assert h(traj, next_state, goal, move_actions, 5, interruption_prob, 0)[0] == \
         pytest.approx(0.729 * 5)
+
+
+def test_h_user_reward():
+    # setup
+    reward = 1
+    move_op = construct_move_operator(4)
+
+    objects_by_type = {
+        "robot": {"robot1"},
+        "location": {"kitchen", "living_room"},
+    }
+
+    move_actions = move_op.instantiate(objects_by_type)
+    assert len(move_actions) == 2
+
+    initial_state = State(
+        time=0,
+        fluents={F("at robot1 kitchen"), F("free robot1")}
+    )
+
+    goal = F("at robot1 living_room") & F("free robot1")
+
+    traj = Trajectory(state_history=[initial_state], plan=[], interruption_probs=[])
+    applicable_actions = get_next_actions(initial_state, move_actions)
+    assert len(applicable_actions) == 1
+    action = applicable_actions[0]
+    next_state, interruption_prob = get_next_state(initial_state, action, 0.1)
+
+    # tests for when passed in hueristic_fn is an int
+    assert h(traj, next_state, goal, move_actions, 5, interruption_prob, reward)[0] == 0.9 * 6
+    traj.interruption_probs.append(0.1)
+    assert h(traj, next_state, goal, move_actions, 5, interruption_prob, reward)[0] == \
+        pytest.approx(0.81 * 6)
+    traj.interruption_probs.append(0.1)
+    assert h(traj, next_state, goal, move_actions, 5, interruption_prob, reward)[0] == \
+        pytest.approx(0.729 * 6)
 
 
 @pytest.mark.parametrize("heuristic_fn", [0, 5])
@@ -280,8 +323,17 @@ def test_compute_interruption_value(task_distribution):
     else:
         assert expected_value == pytest.approx(0.5*4 + 0.5*(3 + 4 + 2))
 
+
 @pytest.mark.parametrize("heuristic_fn", [0, det_ff_heuristic])
-def test_optimal_make_sandwhich_noint(heuristic_fn):
+@pytest.mark.parametrize(
+    "interruption_prob_fn",
+    [
+        0.0,
+        partial(get_task_arrival_prob, RandomVariableType.DISCRETE, 0.0),
+        partial(get_task_arrival_prob, RandomVariableType.CONTINUOUS, 0.0)
+    ]
+)
+def test_optimal_make_sandwhich_noint(heuristic_fn, interruption_prob_fn):
     # setup
     locations = {
             "refrigerator": np.array([0, 0]),
@@ -341,7 +393,7 @@ def test_optimal_make_sandwhich_noint(heuristic_fn):
         actions,
         None,
         heuristic_fn,
-        0.0,
+        interruption_prob_fn,
         num_steps=1000000
     )
 

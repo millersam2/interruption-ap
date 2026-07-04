@@ -1,7 +1,7 @@
 import pytest
 from railroad.operators.core import construct_pick_operator, construct_move_operator
 from railroad.core import State, Fluent, get_next_actions
-from utilities import get_action_cost, get_next_state
+from utilities import get_action_cost, get_next_state, RandomVariableType, get_task_arrival_prob
 
 @pytest.mark.parametrize("action_cost", [1, 3, 5])
 def test_get_action_cost_pick(action_cost):
@@ -40,3 +40,17 @@ def test_get_next_state():
     assert next_state.time == 4
     assert next_state.fluents == {Fluent("at robot1 living_room"), Fluent("free robot1")}
     assert interruption_prob == 0
+
+
+@pytest.mark.parametrize(
+    argnames="rv_type, arrival_prob, action_time, sol",
+    argvalues=[
+        (RandomVariableType.DISCRETE, 0.1, 1, 0.1),
+        (RandomVariableType.DISCRETE, 0.1, 4, 0.1),
+        (RandomVariableType.DISCRETE, 0.1, -1, 0.1),
+        (RandomVariableType.CONTINUOUS, 0.1, 1, 0.1),
+        (RandomVariableType.CONTINUOUS, 0.1, 4, 0.4),
+    ]
+)
+def test_get_task_arrival_prob(rv_type, arrival_prob, action_time, sol):
+    assert get_task_arrival_prob(rv_type, arrival_prob, action_time) == pytest.approx(sol)

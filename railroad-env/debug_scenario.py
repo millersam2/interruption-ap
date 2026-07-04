@@ -1,17 +1,22 @@
+from typing import List
+from functools import partial
 import numpy as np
 from railroad.core import Fluent as F, State, det_ff_heuristic
 from railroad.environment import SymbolicEnvironment
 from railroad.operators.core import construct_move_operator, construct_pick_operator, \
     construct_place_operator
 from interruption_ap import astar_search
-from utilities import negative_fluent_preprocessing, construct_assemble_operator
+from utilities import (
+    negative_fluent_preprocessing, construct_assemble_operator,
+    get_task_arrival_prob, RandomVariableType, print_plan
+)
 
 # global constants
 LOCATIONS = {
         "refrigerator": np.array([0, 0]),
         "pantry": np.array([1, 0]),
         "countertop1": np.array([1,1]),
-        "countertop2": np.array([2,2]),
+        "countertop2": np.array([2,1]),
         "table": np.array([0,2])
 }
 
@@ -49,18 +54,27 @@ def main():
 
     # Task: make sandwhich
     goal = F("sandwhich-made")
-    # goal = (F("at turkey countertop1") | F("at turkey countertop2"))
-    # goal = (
-    #     (F("at bread countertop1") & F("at turkey countertop1")) |
-    #     (F("at bread countertop2") & F("at turkey countertop2"))
+
+    # # Task replacement
+    # # Interrupting Task Distribution: Clean-off countertop1
+    # interrupting_task_dist = (
+    #     [
+    #         (
+    #             ~F("at turkey countertop1") & ~F("at bread countertop1") &
+    #             ~F("hand-full robot1") & ~F("at sandwhich countertop1")
+    #         )
+    #     ],
+    #     [1.0]
     # )
 
+    # Task augmentation
     # Interrupting Task Distribution: Clean-off countertop1
     interrupting_task_dist = (
         [
             (
-                ~F("at turkey countertop2") & ~F("at bread countertop2") &
-                ~F("hand-full robot1") & ~F("at sandwhich countertop2")
+                ~F("at turkey countertop1") & ~F("at bread countertop1") &
+                ~F("hand-full robot1") & ~F("at sandwhich countertop1") &
+                F("sandwhich-made")
             )
         ],
         [1.0]
@@ -75,21 +89,27 @@ def main():
     goal = converted_goals[0]
     interrupting_task_dist = (list(converted_goals[1:]), interrupting_task_dist[1])
 
+    prob_int = 0.3
+    task_arrival_prob_fn = partial(
+        get_task_arrival_prob, RandomVariableType.CONTINUOUS, prob_int
+    )
+
     plan, cost = astar_search(
         initial_state,
         goal,
         actions,
-        None,
+        interrupting_task_dist,
         det_ff_heuristic,
+        task_arrival_prob_fn,
         0,
-        0,
-        num_steps=1000000,
-        print_trace=True
+        num_steps=100000,
+        print_trace=False
     )
 
     # temporary, very basic plan outputs for debugging
     action_names = [action.name for action in plan]
-    print(f"Best Plan: {action_names}")
+    print(f"Probability of Interruption : {prob_int}")
+    print_plan(action_names)
     print(f"Discounted Plan Cost: {cost}")
 
 
@@ -103,7 +123,8 @@ def construct_initial_state() -> State:
         F("free robot1"), F("at robot1 table"), F("is-turkey turkey"), F("is-bread bread"),
         ~F("hand-full robot1"), F("at turkey refrigerator"), F("at bread pantry"),
         ~F("prep-station table"), F("prep-station countertop2"), ~F("prep-station refrigerator"),
-        ~F("sandwhich-made"), F("prep-station countertop1"), F("is-sandwhich sandwhich")
+        ~F("sandwhich-made"), F("prep-station countertop1"), F("is-sandwhich sandwhich"),
+        ~F("prep-station pantry")
     }
     return State(0.0, initial_fluents)
 

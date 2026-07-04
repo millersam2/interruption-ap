@@ -1,4 +1,5 @@
 from typing import List, Union, Callable, Tuple
+from enum import Enum
 from railroad.core import (
     Action, Goal, State, transition, Fluent as F, LiteralGoal, Operator, Effect
 )
@@ -12,6 +13,16 @@ from railroad.core import (
     convert_goal_to_positive_preconditions
 )
 
+# global constants/enums
+class RandomVariableType(Enum):
+    """
+    Enumeration for the valid types of a random variable. Ensures that the 
+    user can only pass in a valid random variable type for get_interruption_prob function.
+    """
+    DISCRETE = 1
+    CONTINUOUS = 2
+
+
 # utility functions for interruption anticipatory planning
 def get_action_cost(action: Action) -> float:
     """
@@ -23,7 +34,7 @@ def get_action_cost(action: Action) -> float:
 def get_next_state(
     state: State,
     action: Action,
-    interrupting_prob_fn: Union[Callable[[State, Action], float], float] = 0
+    interrupting_prob_fn: Union[Callable[[float], float], float] = 0
 ) -> Tuple[State, float]:
     """
     Gets the state s' after performing an action a in s. This function
@@ -33,7 +44,7 @@ def get_next_state(
     if isinstance(interrupting_prob_fn, (float, int)):
         interruption_prob = interrupting_prob_fn
     else:
-        interruption_prob = interrupting_prob_fn(state, action)
+        interruption_prob = interrupting_prob_fn(get_action_cost(action))
     outcomes = transition(state, action)
     assert len(outcomes) == 1
     next_state, prob = outcomes[0]
@@ -98,3 +109,46 @@ def construct_assemble_operator(assemble_time: int):
             ]
         )
     return assemble
+
+
+def get_task_arrival_prob(
+    rv_type: RandomVariableType,
+    arrival_prob: float,
+    action_time: float = -1
+) -> float:
+    """
+    Helper function that returns the probability of a task arriving after the execution
+    of an action. Supports both per-action (treating the random variable as discrete) and
+    per-time-unit (treating the random variable as continuous) probabilities.
+    """
+    if rv_type == RandomVariableType.DISCRETE or action_time == -1:
+        return arrival_prob
+    return min(arrival_prob * action_time, 1.0)
+
+
+def print_plan(actions: List[str]) -> None:
+    """
+    Helper function for printing out the best plan in a more
+    readable format.
+    """
+    print("Best Plan:")
+    for i, action in enumerate(actions):
+        print(f"{i}. {action}")
+
+
+def get_augmented_task_dist(
+    current_task: F | LiteralGoal,
+    interrupting_task_dist: Tuple[List[Goal], List[float]]
+) -> Tuple[List[Goal], List[float]]:
+    """
+    Helper function for task augmentation experiments. Given
+    the passed in interrupting_task_dist, creates new future
+    tasks that include the current task. Does not make changes
+    in-place.
+    """
+    augmented_tasks = []
+    probs = []
+    for task, prob in zip(*interrupting_task_dist):
+        augmented_tasks.append(current_task & task)
+        probs.append(prob)
+    return (augmented_tasks, probs)
