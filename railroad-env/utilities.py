@@ -131,7 +131,7 @@ def print_plan(actions: List[str]) -> None:
     Helper function for printing out the best plan in a more
     readable format.
     """
-    print("Best Plan:")
+    # print("Best Plan:")
     for i, action in enumerate(actions):
         print(f"{i}. {action}")
 

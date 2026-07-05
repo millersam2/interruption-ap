@@ -6,6 +6,7 @@ from itertools import product
 from collections import defaultdict
 from typing import Tuple, List, Dict
 from pathlib import Path
+from tqdm import tqdm
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -39,7 +40,7 @@ def main():
     output_fpath = "outputs/prototype_experimental_results.csv"
     baseline = [True, False]
     augment = [True, False]
-    num_experiments = 1
+    num_experiments = 100
     environment_interruption_probs = [0, 0.01, 0.05, 0.1, 0.12, 0.15, 0.20, 0.25, 0.3]
     random_seeds = [400, 270, 100, 140, 600, 499, 42, 82, 970]
     goal = F("sandwhich-made")
@@ -78,7 +79,8 @@ def main():
     # seed | total_cost | initial_plan
     results = []
 
-    for augment, baseline, (i, interrupting_task_dist), (int_prob, seed) in experiment_settings:
+    wrapped_experiment_settings = tqdm(experiment_settings, desc="Experiment Settings")
+    for augment, baseline, (i, task_dist), (int_prob, seed) in wrapped_experiment_settings:
         # set seed. keep the seed the same for baseline/prototype, but different for
         # various interrupting task distributions and augment/replace.
         computed_seed = seed * (augment+i+1)
@@ -86,12 +88,12 @@ def main():
 
         # augment the interrupting_task_dist if necessary
         if augment:
-            interrupting_task_dist = get_augmented_task_dist(goal, interrupting_task_dist)
-        for j in range(num_experiments):
-            total_cost, plan = run_experiment(
+            task_dist = get_augmented_task_dist(goal, task_dist)
+        for j in tqdm(range(num_experiments), desc="Experiments", leave=False):
+            total_cost, plan, execution_trace = run_experiment(
                 int_prob,
                 goal,
-                interrupting_task_dist,
+                task_dist,
                 baseline
             )
 
@@ -104,7 +106,8 @@ def main():
                     int_prob,
                     computed_seed,
                     total_cost,
-                    plan
+                    plan,
+                    execution_trace
                 ]
             )
 
@@ -112,11 +115,12 @@ def main():
     write_out_csv_results(
         output_fpath,
         ["ExperimentNum", "Augment", "Baseline", "Task_Dist_Idx", "Prob_Int", "Seed", "TotalCost"],
-        [output[:-1] for output in results]
+        [output[:-2] for output in results]
     )
 
-    # write out plans
-    write_out_plans(results)
+    # write out plans and execution traces
+    write_out_traces(results, mode="plan")
+    write_out_traces(results, mode="execution")
 
     # write out summary of results
     results_summary = summarize_results(results)
@@ -131,9 +135,11 @@ def run_experiment(
     goal: Goal,
     interrupting_task_dist: Tuple[List[Goal], List[float]],
     baseline_flag: bool
-) -> Tuple[float, List[str] | None]:
+) -> Tuple[float, List[str] | None, List[str] | None]:
     """
     Runs a single experiment, given the parameters specified in main.
+    Returns the total cost of the execution sequence, the initial plan, and a trace of 
+    the execution sequence.
     """
     # the probability of interruption depends on the length of time required to execute an action
     interruption_prob_fn = partial(
@@ -174,18 +180,23 @@ def run_experiment(
 
     # check if the plan was successful
     if "assemble" not in plan[-1].name:
-        return -1, None
+        return -1, None, None
 
     # execution loop
+    execution_trace = []
+
     for converted_action in plan:
         action = get_action_by_name(env.get_actions(), converted_action.name)
         # interrupting task arrived
         if goal.evaluate(env.state.fluents):
+            execution_trace.append("Initial Goal Completed")
             break
 
         env.act(action)
+        execution_trace.append(converted_action.name)
 
         if random.random() < interruption_prob_fn(get_action_cost(action)):
+            execution_trace.append("New task arrived")
             break
 
     # re-plan for interrupting task that arrived or completion of current task
@@ -208,12 +219,16 @@ def run_experiment(
     for converted_action in re_plan:
         action = get_action_by_name(env.get_actions(), converted_action.name)
         if interrupting_goal.evaluate(env.state.fluents):
+            execution_trace.append("Interrupting Goal Completed")
             break
         env.act(action)
+        execution_trace.append(converted_action.name)
+
 
     return (
         env.time if interrupting_goal.evaluate(env.state.fluents) else -1,
-        [action.name for action in plan]
+        [action.name for action in plan],
+        execution_trace
     )
 
 
@@ -275,19 +290,25 @@ def write_out_csv_results(out_fpath: str, header: List[str], results: List) -> N
         writer.writerows(results)
 
 
-def write_out_plans(results: List[List]) -> None:
+def write_out_traces(results: List[List], mode: str = "plan") -> None:
     """
     Helper function for writing out the computed plans
     from the experiments.
     """
-    for num, aug, baseline, tdist_i, prob_int, _, _, plan in results:
-        out_fpath = f"plans/{aug}/task_dist_{tdist_i}/prob_int_{prob_int}/{baseline}/plan_{num}.txt"
+    for num, aug, baseline, tdist_i, prob_int, _, _, plan, execution_trace in results:
+        out_dir = f"plans/{aug}/task_dist_{tdist_i}/prob_int_{prob_int}/{baseline}"
+        if mode == "plan":
+            out_fpath = out_dir + f"/plan_{num}.txt"
+        elif mode == "execution":
+            out_fpath = out_dir + f"/execution_trace_{num}.txt"
+        else: # invalid argument for mode provided
+            return
 
-        Path(out_fpath[:out_fpath.rindex("/")]).mkdir(parents=True, exist_ok=True)
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
 
         with open(out_fpath, 'w', encoding="utf-8") as fp:
             with contextlib.redirect_stdout(fp):
-                print_plan(plan)
+                print_plan(plan if mode == "plan" else execution_trace)
 
 
 def summarize_results(results: List[List]) -> Dict[Tuple, float]:
@@ -295,7 +316,7 @@ def summarize_results(results: List[List]) -> Dict[Tuple, float]:
     Helper function for summarizing the experimental results.
     """
     grouped_results = defaultdict(list)
-    for _, augment, baseline, task_dist_i, prob_int, _, total_cost, _ in results:
+    for _, augment, baseline, task_dist_i, prob_int, _, total_cost, _, _ in results:
         grouped_results[(augment, baseline, task_dist_i, prob_int)].append(total_cost)
     return {k: sum(v) / len(v) for k, v in grouped_results.items()}
 
@@ -377,7 +398,7 @@ def plot(df: pd.DataFrame, out_fp: str) -> None:
     plt.ylabel("Total Cost", fontsize=14)
 
     # Set y-axis scale
-    plt.ylim(0, 18)
+    plt.ylim(0, 14)
 
     # Legend and grid
     plt.legend()
@@ -386,7 +407,7 @@ def plot(df: pd.DataFrame, out_fp: str) -> None:
     plt.savefig(out_fp, dpi=600, bbox_inches='tight')
 
     # Show plot
-    plt.show()
+    # plt.show()
 
 
 def generate_plots(summary_stats_fpath: str) -> None:
