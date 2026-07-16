@@ -1,4 +1,5 @@
-from typing import List, Union, Callable, Tuple
+import json
+from typing import List, Union, Callable, Tuple, Set, Any, Dict
 from enum import Enum
 from railroad.core import (
     Action, Goal, State, transition, Fluent as F, LiteralGoal, Operator, Effect
@@ -12,6 +13,9 @@ from railroad.core import (
     convert_action_effects,
     convert_goal_to_positive_preconditions
 )
+from railroad.operators._utils import OptNumeric, _to_numeric
+from railroad.environment.procthor.resources import get_procthor_10k_dir
+from railroad.environment.procthor.utils import get_generic_name
 
 # global constants/enums
 class RandomVariableType(Enum):
@@ -84,6 +88,7 @@ def negative_fluent_preprocessing(actions: List[Action], state: State, goals: Li
     return converted_actions, converted_state, converted_goals, mapping
 
 
+# custom operator functions
 def construct_assemble_operator(assemble_time: int):
     """
     Constructs an assemble sandwhich operator.
@@ -109,6 +114,56 @@ def construct_assemble_operator(assemble_time: int):
             ]
         )
     return assemble
+
+
+def construct_gripper_pick_operator(pick_time: OptNumeric) -> Operator:
+    """Construct a basic pick operator (non-blocking).
+
+    Args:
+        pick_time: Time or function for pick duration.
+            Function signature: (robot, gripper, location, object) -> float
+
+    Returns:
+        Operator for picking up an object.
+    """
+    pick_time_fn = _to_numeric(pick_time)
+    return Operator(
+        name="pick",
+        parameters=[("?r", "robot"), ("?g", "gripper"), ("?loc", "location"), ("?obj", "object")],
+        preconditions=[F("at ?r ?loc"), F("free ?r"), F("at ?obj ?loc"), ~F("hand-full ?g")],
+        effects=[
+            Effect(time=0, resulting_fluents={F("not free ?r"), F("not at ?obj ?loc")}),
+            Effect(
+                time=(pick_time_fn, ["?r", "?g", "?loc", "?obj"]),
+                resulting_fluents={F("free ?r"), F("holding ?g ?obj"), F("hand-full ?g")},
+            ),
+        ],
+    )
+
+
+def construct_gripper_place_operator(place_time: OptNumeric) -> Operator:
+    """Construct a basic place operator (non-blocking).
+
+    Args:
+        place_time: Time or function for place duration.
+            Function signature: (robot, gripper, location, object) -> float
+
+    Returns:
+        Operator for placing an object.
+    """
+    place_time_fn = _to_numeric(place_time)
+    return Operator(
+        name="place",
+        parameters=[("?r", "robot"), ("?g", "gripper"), ("?loc", "location"), ("?obj", "object")],
+        preconditions=[F("at ?r ?loc"), F("free ?r"), F("holding ?g ?obj"), F("hand-full ?g")],
+        effects=[
+            Effect(time=0, resulting_fluents={F("not free ?r"), F("not holding ?g ?obj")}),
+            Effect(
+                time=(place_time_fn, ["?r", "?g", "?loc", "?obj"]),
+                resulting_fluents={F("free ?r"), F("at ?obj ?loc"), ~F("hand-full ?g")},
+            ),
+        ],
+    )
 
 
 def get_task_arrival_prob(
@@ -152,3 +207,101 @@ def get_augmented_task_dist(
         augmented_tasks.append(current_task & task)
         probs.append(prob)
     return (augmented_tasks, probs)
+
+
+# helper functions for ProcTHOR-10k dataset experiments
+def filter_procthor_scenes(
+    num_rooms: Set[int] | None = None,
+    room_types: Set[str] | None = None,
+    locations: Set[str] | None = None,
+    objects: Set[str] | None = None
+) -> List[int]:
+    """
+    Filters the scenes of the ProcTHOR-10k dataset based on 
+    the number of rooms in the scene, if 1 or more of the rooms
+    in the scene have the desired roomType, and/or the scene contains
+    user-specified locations (containers) and objects, which must be
+    lowercase strings.
+    Returns a list of the indicies of scenes (seeds) that have the 
+    desired criteria.
+    """
+    # load in scene representations of ProcTHOR-10k
+    data_dir = get_procthor_10k_dir()
+    with open(data_dir / 'data.jsonl', 'r', encoding="utf-8") as f:
+        json_list = list(f)
+
+    # when no filter criteria are provided, return a list of all the seeds
+    if (
+        num_rooms is None and
+        room_types is None and
+        locations is None and
+        objects is None
+    ):
+        return list(range(len(json_list)))
+
+    filtered_scene_seeds = []
+    for seed, scene_json in enumerate(json_list):
+        scene = json.loads(scene_json)
+        rooms = scene["rooms"]
+        containers = scene["objects"]
+        if (
+            _check_num_rooms(rooms, num_rooms) and
+            _check_scene_room_types(rooms, room_types) and
+            _check_scene_locations(containers, locations) and
+            _check_scene_objects(containers, objects)
+        ):
+            filtered_scene_seeds.append(seed)
+
+    return filtered_scene_seeds
+
+
+def _check_num_rooms(rooms: List[Dict[str, Any]], num_rooms: Set[int] | None) -> bool:
+    """
+    Helper function for checking if the number of rooms in a ProcTHOR scene
+    matches the desired number of rooms.
+    Returns True if the user doesn't specify the desired number of rooms or
+    if a match is found. Otherwise, returns False.
+    """
+    return len(rooms) in num_rooms if num_rooms is not None else True
+
+
+def _check_scene_room_types(rooms: List[Dict[str, Any]], room_types: Set[str] | None) -> bool:
+    """
+    Helper function for checking if 1 or more of the rooms in a ProcTHOR
+    scene is of the desired type. (E.g., kitchen, bedroom, etc.)
+    Returns True if the user doesn't specify the desired number of rooms or
+    if a match is found. Otherwise, returns False.
+    """
+    if room_types is None:
+        return True
+    return bool([True for room in rooms if room["roomType"] in room_types])
+
+
+def _check_scene_locations(containers: List[Dict[str, Any]], locations: Set[str] | None) -> bool:
+    """
+    Helper function for checking if the ProcTHOR scene contains the 
+    desired locations. (E.g., countertop, fridge, etc.)
+    Returns True if the user doesn't specify the desired number of rooms or
+    if all locations are present. Otherwise, returns False.
+    """
+    if locations is None:
+        return True
+    scene_locations = {get_generic_name(container["id"]) for container in containers}
+    return locations.issubset(scene_locations)
+
+
+def _check_scene_objects(containers: List[Dict[str, Any]], objects: Set[str] | None) -> bool:
+    """
+    Helper function for checking if the ProcTHOR scene contains the
+    desired objects. (E.g., coffeemachine, egg, etc.)
+    Returns True if the user doesn't specify the desired number of rooms or
+    if all objects are present. Otherwise, returns False.
+    """
+    if objects is None:
+        return True
+    scene_objects = {
+        get_generic_name(child["id"])
+        for container in containers
+        for child in container.get("children", [])
+    }
+    return objects.issubset(scene_objects)

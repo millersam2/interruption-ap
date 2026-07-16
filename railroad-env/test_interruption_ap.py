@@ -1,7 +1,7 @@
 import numpy as np
 from functools import partial
 import pytest
-from railroad.core import State, Fluent as F, get_next_actions, det_ff_heuristic
+from railroad.core import State, Fluent as F, get_next_actions, ff_heuristic
 from railroad.operators.core import (
     construct_move_operator,
     construct_pick_operator,
@@ -213,7 +213,7 @@ def test_construct_trajectory(heuristic_fn):
     assert new_traj.interruption_probs == [0.1]
 
 
-@pytest.mark.parametrize("heuristic_fn", [0, 5, det_ff_heuristic])
+@pytest.mark.parametrize("heuristic_fn", [0, 5, ff_heuristic])
 def test_astart_search_noint(heuristic_fn):
     # setup
     move_op = construct_move_operator(4)
@@ -324,7 +324,7 @@ def test_compute_interruption_value(task_distribution):
         assert expected_value == pytest.approx(0.5*4 + 0.5*(3 + 4 + 2))
 
 
-@pytest.mark.parametrize("heuristic_fn", [0, det_ff_heuristic])
+@pytest.mark.parametrize("heuristic_fn", [0, ff_heuristic])
 @pytest.mark.parametrize(
     "interruption_prob_fn",
     [

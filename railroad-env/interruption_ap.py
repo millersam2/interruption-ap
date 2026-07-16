@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Tuple, List, Callable, Union
 import heapq
+from tqdm import tqdm
 from utilities import get_action_cost, get_next_state
 from railroad.core import State, Goal, Action, get_next_actions, Fluent
 
@@ -157,7 +158,9 @@ def astar_search(
     heapq.heappush(frontier, (initial_traj, -1))
 
     # search loop
-    for i in range(num_steps):
+    # to not clutter up the console with output for solving the interrupting tasks
+    iterations = tqdm(range(num_steps)) if interrupting_task_dist else range(num_steps)
+    for i in iterations:
         # some logging functionality for debugging
         if print_trace and interrupting_task_dist:
             print_frontier_trace(i, frontier)

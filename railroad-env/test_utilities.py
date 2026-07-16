@@ -1,7 +1,10 @@
 import pytest
 from railroad.operators.core import construct_pick_operator, construct_move_operator
 from railroad.core import State, Fluent, get_next_actions
-from utilities import get_action_cost, get_next_state, RandomVariableType, get_task_arrival_prob
+from utilities import (
+    get_action_cost, get_next_state, RandomVariableType, get_task_arrival_prob,
+    filter_procthor_scenes, _check_num_rooms, _check_scene_room_types
+)
 
 @pytest.mark.parametrize("action_cost", [1, 3, 5])
 def test_get_action_cost_pick(action_cost):
@@ -54,3 +57,43 @@ def test_get_next_state():
 )
 def test_get_task_arrival_prob(rv_type, arrival_prob, action_time, sol):
     assert get_task_arrival_prob(rv_type, arrival_prob, action_time) == pytest.approx(sol)
+
+
+@pytest.mark.parametrize(
+    argnames="rooms, num_rooms, sol",
+    argvalues=[
+        ([{"room1": 1}, {"room2": 2}], {1}, False),
+        ([{"room1": 1}, {"room2": 2}], {2}, True),
+        ([{"room1": 1}, {"room2": 2}], {1, 2}, True),
+        ([{"room1": 1}, {"room2": 2}], None, True),
+    ]
+)
+def test_check_num_rooms(rooms, num_rooms, sol):
+    assert _check_num_rooms(rooms, num_rooms) == sol
+
+
+@pytest.mark.parametrize(
+    argnames="rooms, room_types, sol",
+    argvalues=[
+        ([{"roomType": "Kitchen"}], {"Bedroom"}, False),
+        ([{"roomType": "Bedroom"}], {"Bedroom"}, True),
+        ([{"roomType": "Kitchen"}, {"roomType": "Bedroom"}], {"Kitchen"}, True),
+        ([{"roomType": "Kitchen"}, {"roomType": "Bedroom"}], None, True),
+    ]
+)
+def test_check_scene_room_types(rooms, room_types, sol):
+    assert _check_scene_room_types(rooms, room_types) == sol
+
+
+@pytest.mark.parametrize(
+    argnames="num_rooms, room_types, locations, objects, sol",
+    argvalues=[
+        (None, None, None, None, 10000),
+        ({1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, None, None, None, 10000),
+        ({1}, {"Kitchen"}, None, None, 482),
+        ({1}, {"Kitchen"}, {"sidetable"}, None, 33),
+        ({1}, {"Kitchen"}, None, {"coffeemachine"}, 120),
+    ]
+)
+def test_filter_procthor_scenes(num_rooms, room_types, locations, objects, sol):
+    assert len(filter_procthor_scenes(num_rooms, room_types, locations, objects)) == sol

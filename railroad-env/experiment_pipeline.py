@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from railroad.core import (
-    Fluent as F, State, det_ff_heuristic, Goal,
+    Fluent as F, State, ff_heuristic, Goal,
     get_action_by_name, convert_state_to_positive_preconditions
 )
 from railroad.environment import SymbolicEnvironment
@@ -43,7 +43,8 @@ def main():
     num_experiments = 100
     environment_interruption_probs = [0, 0.01, 0.05, 0.1, 0.12, 0.15, 0.20, 0.25, 0.3]
     random_seeds = [400, 270, 100, 140, 600, 499, 42, 82, 970]
-    goal = F("sandwhich-made")
+    # goal = F("sandwhich-made")
+    goal = (F("sandwhich-made") & F("at sandwhich table"))
     interrupting_task_dists = [
         (
             [
@@ -174,16 +175,16 @@ def run_experiment(
         converted_goal,
         converted_actions,
         planning_interrupting_task_dist,
-        det_ff_heuristic,
+        ff_heuristic,
         planning_interruption_prob,
         current_task_reward,
         num_steps=300000,
         print_trace=False
     )
 
-    # check if the plan was successful
-    if "assemble" not in plan[-1].name:
-        return -1, None, None
+    # # check if the plan was successful
+    # if "assemble" not in plan[-1].name:
+    #     return -1, None, None
 
     # execution loop
     execution_trace = []
@@ -212,7 +213,7 @@ def run_experiment(
         converted_interrupting_goal,
         converted_actions,
         None,
-        det_ff_heuristic,
+        ff_heuristic,
         0,
         0,
         num_steps=300000,
@@ -397,7 +398,7 @@ def plot(df: pd.DataFrame, out_fp: str) -> None:
     )
 
     # Labels and title
-    plt.xlabel("Probability of Interruption", fontsize=14)
+    plt.xlabel("Probability of Interruption Per Time Unit", fontsize=14)
     plt.ylabel("Total Cost", fontsize=14)
 
     # Set y-axis scale
