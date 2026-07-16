@@ -1,4 +1,5 @@
 import json
+import math
 from typing import List, Union, Callable, Tuple, Set, Any, Dict
 from enum import Enum
 from railroad.core import (
@@ -178,7 +179,22 @@ def get_task_arrival_prob(
     """
     if rv_type == RandomVariableType.DISCRETE or action_time == -1:
         return arrival_prob
-    return min(arrival_prob * action_time, 1.0)
+    # TODO - update related tests
+    # arrival_prob is now parameter Beta for the exponential distribution
+    return 1 - math.exp(-arrival_prob * action_time)
+
+
+def calibrate_beta_parameter(prob: float, a_t: float | int) -> float:
+    """
+    Helper function for computing the value of the beta parameter for the
+    CDF of the exponential distribution such the provided time to complete
+    an action will have the specified probability.
+    Returns the computed Beta parameter when valid inputs provided
+    (Prob: [0, 1] and a_t >= 0). Otherwise returns -1 on invalid inputs.
+    """
+    if prob < 0 or prob > 1 or a_t < 0:
+        return -1
+    return -math.log(1 - prob) / a_t
 
 
 def print_plan(actions: List[str]) -> None:

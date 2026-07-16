@@ -144,6 +144,7 @@ def astar_search(
     interrupting_task_dist: Tuple[List[Goal], List[float]] | None,
     heuristic_fn: Union[int, float, Callable[[State, Goal, List[Action]], float]] = 0,
     interruption_prob_fn: Union[float, Callable[[float], float]] = 0.1,
+    interruption_value_fn: Callable[[Tuple[Fluent]], float] | None = None,
     current_task_reward: float = 0,
     num_steps: int = 100000,
     print_trace: bool = False
@@ -190,9 +191,12 @@ def astar_search(
                 # after an interrupting task has arrived once, we assume that another interrupting
                 # task cannot arrive. following that logic, the expected value of a state is not
                 # discounted.
-                val = compute_interruption_value(
-                    next_state, actions, interrupting_task_dist, heuristic_fn, 0
-                )
+                if interruption_value_fn:
+                    val = interruption_value_fn(next_state_key)
+                else:
+                    val = compute_interruption_value(
+                        next_state, actions, interrupting_task_dist, heuristic_fn, 0
+                    )
                 value_cache[next_state_key] = val
 
             # construct new trajectory

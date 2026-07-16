@@ -177,6 +177,7 @@ def run_experiment(
         planning_interrupting_task_dist,
         ff_heuristic,
         planning_interruption_prob,
+        None,
         current_task_reward,
         num_steps=300000,
         print_trace=False
@@ -215,6 +216,7 @@ def run_experiment(
         None,
         ff_heuristic,
         0,
+        None,
         0,
         num_steps=300000,
         print_trace=False
