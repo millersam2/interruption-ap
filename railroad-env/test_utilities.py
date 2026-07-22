@@ -3,7 +3,8 @@ from railroad.operators.core import construct_pick_operator, construct_move_oper
 from railroad.core import State, Fluent, get_next_actions
 from utilities import (
     get_action_cost, get_next_state, RandomVariableType, get_task_arrival_prob,
-    filter_procthor_scenes, _check_num_rooms, _check_scene_room_types
+    filter_procthor_scenes, _check_num_rooms, _check_scene_room_types,
+    get_augmented_task_dist, DistributionType
 )
 
 @pytest.mark.parametrize("action_cost", [1, 3, 5])
@@ -46,17 +47,21 @@ def test_get_next_state():
 
 
 @pytest.mark.parametrize(
-    argnames="rv_type, arrival_prob, action_time, sol",
+    argnames="rv_type, arrival_prob, dist_t, time_for_prob, action_time, sol",
     argvalues=[
-        (RandomVariableType.DISCRETE, 0.1, 1, 0.1),
-        (RandomVariableType.DISCRETE, 0.1, 4, 0.1),
-        (RandomVariableType.DISCRETE, 0.1, -1, 0.1),
-        (RandomVariableType.CONTINUOUS, 0.1, 1, 0.1),
-        (RandomVariableType.CONTINUOUS, 0.1, 4, 0.4),
+        (RandomVariableType.DISCRETE, 0.1, None, 100, 1, 0.1),
+        (RandomVariableType.DISCRETE, 0.1, None, 100, 4, 0.1),
+        (RandomVariableType.DISCRETE, 0.1, None, 100, -1, 0.1),
+        (RandomVariableType.CONTINUOUS, 0.1, DistributionType.UNIFORM, 100, 1, 0.1),
+        (RandomVariableType.CONTINUOUS, 0.1, DistributionType.UNIFORM, 100, 4, 0.4),
+        (RandomVariableType.CONTINUOUS, 1, DistributionType.EXPONENTIAL, 100, 1, 1),
+        (RandomVariableType.CONTINUOUS, 0.1, DistributionType.EXPONENTIAL, 4, 4, 0.1),
+        (RandomVariableType.CONTINUOUS, 0.1, DistributionType.EXPONENTIAL, 1, 1, 0.1),
     ]
 )
-def test_get_task_arrival_prob(rv_type, arrival_prob, action_time, sol):
-    assert get_task_arrival_prob(rv_type, arrival_prob, action_time) == pytest.approx(sol)
+def test_get_task_arrival_prob(rv_type, arrival_prob, dist_t, time_for_prob, action_time, sol):
+    arrival_prob = get_task_arrival_prob(rv_type, arrival_prob, dist_t, time_for_prob, action_time)
+    assert arrival_prob == pytest.approx(sol)
 
 
 @pytest.mark.parametrize(
@@ -97,3 +102,28 @@ def test_check_scene_room_types(rooms, room_types, sol):
 )
 def test_filter_procthor_scenes(num_rooms, room_types, locations, objects, sol):
     assert len(filter_procthor_scenes(num_rooms, room_types, locations, objects)) == sol
+
+
+@pytest.mark.parametrize(
+    argnames="current_task, task_dist, sol",
+    argvalues=[
+        (
+            Fluent("at spoon bathroom"),
+            ([Fluent("at cup bathroom")], [1.0]),
+            ([Fluent("at spoon bathroom") & Fluent("at cup bathroom")], [1.0])
+        ),
+        (
+            Fluent("at spoon bathroom"),
+            ([Fluent("at cup bathroom"), Fluent("at knife bathroom")], [0.5, 0.5]),
+            (
+                [
+                    Fluent("at spoon bathroom") & Fluent("at cup bathroom"),
+                    Fluent("at spoon bathroom") & Fluent("at knife bathroom")
+                ],
+                [0.5, 0.5]
+            )
+        ),
+    ]
+)
+def test_get_augmented_task_dist(current_task, task_dist, sol):
+    assert get_augmented_task_dist(current_task, task_dist) == sol

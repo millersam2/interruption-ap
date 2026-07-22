@@ -66,7 +66,7 @@ def main(good_behavior: bool = False):
                 break
 
             actions = env.get_actions()
-            planner = MCTSPlanner(actions, use_det_heuristic=True)
+            planner = MCTSPlanner(actions)
             action_name = planner(env.state, goal, max_iterations=10000, c=20)
             action = get_action_by_name(actions, action_name)
             env.act(action)
@@ -85,7 +85,7 @@ def main(good_behavior: bool = False):
                 break
 
             actions = env.get_actions()
-            planner = MCTSPlanner(actions, use_det_heuristic=True)
+            planner = MCTSPlanner(actions)
             action_name = planner(env.state, goal, max_iterations=10000, c=20)
             action = get_action_by_name(actions, action_name)
             env.act(action)

@@ -3,7 +3,7 @@ import math
 from typing import List, Union, Callable, Tuple, Set, Any, Dict
 from enum import Enum
 from railroad.core import (
-    Action, Goal, State, transition, Fluent as F, LiteralGoal, Operator, Effect
+    Action, Goal, State, transition, Fluent as F, LiteralGoal
 )
 from railroad.core import (
     extract_negative_preconditions,
@@ -14,7 +14,6 @@ from railroad.core import (
     convert_action_effects,
     convert_goal_to_positive_preconditions
 )
-from railroad.operators._utils import OptNumeric, _to_numeric
 from railroad.environment.procthor.resources import get_procthor_10k_dir
 from railroad.environment.procthor.utils import get_generic_name
 
@@ -26,6 +25,14 @@ class RandomVariableType(Enum):
     """
     DISCRETE = 1
     CONTINUOUS = 2
+
+
+class DistributionType(Enum):
+    """
+    Enumeration for the supported types of distributions for get_task_arrival_prob.
+    """
+    UNIFORM = 1
+    EXPONENTIAL = 2
 
 
 # utility functions for interruption anticipatory planning
@@ -89,88 +96,12 @@ def negative_fluent_preprocessing(actions: List[Action], state: State, goals: Li
     return converted_actions, converted_state, converted_goals, mapping
 
 
-# custom operator functions
-def construct_assemble_operator(assemble_time: int):
-    """
-    Constructs an assemble sandwhich operator.
-    """
-    assemble = Operator(
-            name="assemble",
-            parameters=[
-                ("?r", "robot"), ("?o1", "object"), ("?o2", "object"),
-                ("?o3", "object"), ("?l", "location")
-            ],
-            preconditions=[
-                F("free ?r"), F("is-turkey ?o1"), F("is-bread ?o2"), F("at ?o1 ?l"),
-                F("at ?o2 ?l"), F("at ?r ?l"), ~F("hand-full ?r"), F("prep-station ?l"),
-                F("is-sandwhich ?o3")
-            ],
-            effects=[
-                Effect(time=0, resulting_fluents={F("not free ?r"), F("hand-full ?r")}),
-                Effect(time=assemble_time, resulting_fluents={
-                    F("free ?r"), F("not at ?o1 ?l"), F("not at ?o2 ?l"),
-                    F("sandwhich-made"), ~F("hand-full ?r"),
-                    F("at ?o3 ?l")
-                })
-            ]
-        )
-    return assemble
-
-
-def construct_gripper_pick_operator(pick_time: OptNumeric) -> Operator:
-    """Construct a basic pick operator (non-blocking).
-
-    Args:
-        pick_time: Time or function for pick duration.
-            Function signature: (robot, gripper, location, object) -> float
-
-    Returns:
-        Operator for picking up an object.
-    """
-    pick_time_fn = _to_numeric(pick_time)
-    return Operator(
-        name="pick",
-        parameters=[("?r", "robot"), ("?g", "gripper"), ("?loc", "location"), ("?obj", "object")],
-        preconditions=[F("at ?r ?loc"), F("free ?r"), F("at ?obj ?loc"), ~F("hand-full ?g")],
-        effects=[
-            Effect(time=0, resulting_fluents={F("not free ?r"), F("not at ?obj ?loc")}),
-            Effect(
-                time=(pick_time_fn, ["?r", "?g", "?loc", "?obj"]),
-                resulting_fluents={F("free ?r"), F("holding ?g ?obj"), F("hand-full ?g")},
-            ),
-        ],
-    )
-
-
-def construct_gripper_place_operator(place_time: OptNumeric) -> Operator:
-    """Construct a basic place operator (non-blocking).
-
-    Args:
-        place_time: Time or function for place duration.
-            Function signature: (robot, gripper, location, object) -> float
-
-    Returns:
-        Operator for placing an object.
-    """
-    place_time_fn = _to_numeric(place_time)
-    return Operator(
-        name="place",
-        parameters=[("?r", "robot"), ("?g", "gripper"), ("?loc", "location"), ("?obj", "object")],
-        preconditions=[F("at ?r ?loc"), F("free ?r"), F("holding ?g ?obj"), F("hand-full ?g")],
-        effects=[
-            Effect(time=0, resulting_fluents={F("not free ?r"), F("not holding ?g ?obj")}),
-            Effect(
-                time=(place_time_fn, ["?r", "?g", "?loc", "?obj"]),
-                resulting_fluents={F("free ?r"), F("at ?obj ?loc"), ~F("hand-full ?g")},
-            ),
-        ],
-    )
-
-
 def get_task_arrival_prob(
     rv_type: RandomVariableType,
     arrival_prob: float,
-    action_time: float = -1
+    distribution_type: DistributionType | None = DistributionType.UNIFORM,
+    time_for_prob: float = 100,
+    action_time: float = -1,
 ) -> float:
     """
     Helper function that returns the probability of a task arriving after the execution
@@ -179,20 +110,29 @@ def get_task_arrival_prob(
     """
     if rv_type == RandomVariableType.DISCRETE or action_time == -1:
         return arrival_prob
-    # TODO - update related tests
+    if (
+        rv_type == RandomVariableType.CONTINUOUS and
+        (
+            distribution_type == DistributionType.UNIFORM or
+            arrival_prob == 1
+        )
+    ):
+        return min(arrival_prob * action_time, 1.0)
+    # case: exponential distribution and arrival_prob != 1
     # arrival_prob is now parameter Beta for the exponential distribution
-    return 1 - math.exp(-arrival_prob * action_time)
+    beta = _calibrate_beta_parameter(arrival_prob, time_for_prob)
+    return 1 - math.exp(-beta * action_time)
 
 
-def calibrate_beta_parameter(prob: float, a_t: float | int) -> float:
+def _calibrate_beta_parameter(prob: float, a_t: float | int) -> float:
     """
     Helper function for computing the value of the beta parameter for the
     CDF of the exponential distribution such the provided time to complete
     an action will have the specified probability.
     Returns the computed Beta parameter when valid inputs provided
-    (Prob: [0, 1] and a_t >= 0). Otherwise returns -1 on invalid inputs.
+    (Prob: [0, 1) and a_t >= 0). Otherwise returns -1 on invalid inputs.
     """
-    if prob < 0 or prob > 1 or a_t < 0:
+    if prob < 0 or prob >= 1 or a_t < 0:
         return -1
     return -math.log(1 - prob) / a_t
 
@@ -216,6 +156,8 @@ def get_augmented_task_dist(
     the passed in interrupting_task_dist, creates new future
     tasks that include the current task. Does not make changes
     in-place.
+    NOTE - currently this function doesn't provide any checking for
+    tasks with conflicting goal fluents.
     """
     augmented_tasks = []
     probs = []
@@ -321,3 +263,21 @@ def _check_scene_objects(containers: List[Dict[str, Any]], objects: Set[str] | N
         for child in container.get("children", [])
     }
     return objects.issubset(scene_objects)
+
+
+# helper functions for debugging/testing behavior in ProcTHOR environments
+def handcrafted_interruption_value(prob_int: float, state_fluents: Tuple[F]) -> float:
+    """
+    Function used to test the source of the growing planning time required
+    when transitioning to ProcTHOR environments.
+    """
+    good_fluent_sets = [
+        {F("holding r1-left spoon_15")},#, F("holding r1-right pan_17")},
+        {F("holding r1-right spoon_15")},#, F("holding r1-left pan_17")},
+        {F("at pan_17 shelvingunit_6"), F("holding r1-left spoon_15")},
+        {F("at pan_17 shelvingunit_6"), F("holding r1-right spoon_15")},
+    ]
+    good_state = bool([1 for fs in good_fluent_sets if fs.issubset(state_fluents)])
+    if prob_int >= 0.1 and good_state:
+        return -500
+    return 500

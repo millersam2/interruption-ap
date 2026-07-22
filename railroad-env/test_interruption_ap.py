@@ -1,7 +1,7 @@
-import numpy as np
 from functools import partial
 import pytest
-from railroad.core import State, Fluent as F, get_next_actions, ff_heuristic
+import numpy as np
+from railroad.core import State, Fluent as F, get_next_actions, ff_heuristic, Operator
 from railroad.operators.core import (
     construct_move_operator,
     construct_pick_operator,
@@ -19,12 +19,13 @@ from interruption_ap import (
 )
 from utilities import (
     get_next_state,
-    construct_assemble_operator,
     negative_fluent_preprocessing,
     get_task_arrival_prob,
     RandomVariableType
 )
+from operators import construct_assemble_operator
 
+# global
 INTERRUPTION_PROB = 0.1
 
 def test_check_value_cache():
@@ -349,20 +350,6 @@ def test_optimal_make_sandwhich_noint(heuristic_fn, interruption_prob_fn):
         "object": {"turkey", "bread", "sandwhich"}
     }
 
-    pick_time = 1
-    place_time = 1
-    assemble_time = 3
-
-    # define operators
-    def move_time(robot, loc_from, loc_to):
-        return float(np.linalg.norm(locations[loc_from] - locations[loc_to]))
-
-    move = construct_move_operator(move_time)
-    pick = construct_pick_operator(pick_time)
-    place = construct_place_operator(place_time)
-    assemble = construct_assemble_operator(assemble_time)
-
-    # Setup task planning environment
     initial_fluents = {
         F("free robot1"), F("at robot1 table"), F("is-turkey turkey"), F("is-bread bread"),
         ~F("hand-full robot1"), F("at turkey refrigerator"), F("at bread pantry"),
@@ -372,10 +359,21 @@ def test_optimal_make_sandwhich_noint(heuristic_fn, interruption_prob_fn):
 
     initial_state = State(0.0, initial_fluents)
 
-    env = SymbolicEnvironment(
-        state=initial_state, objects_by_type=objects_by_type,
-        operators=[move, pick, place, assemble],
-    )
+    def move_time(robot, loc_from, loc_to):
+        return float(np.linalg.norm(locations[loc_from] - locations[loc_to]))
+
+    class TestEnvironment(SymbolicEnvironment):
+        """
+        Symbolic environment used for testing.
+        """
+        def define_operators(self) -> list[Operator]:
+            move_op = construct_move_operator(move_time)
+            pick_op = construct_pick_operator(1)
+            place_op = construct_place_operator(1)
+            assemble_op = construct_assemble_operator(3)
+            return [pick_op, place_op, move_op, assemble_op]
+
+    env = TestEnvironment(initial_state, objects_by_type)
 
     # Task: make sandwhich
     goal = F("sandwhich-made")
